@@ -18,11 +18,12 @@ TXT_PATH = "paths_to_templates.txt"
 COVER_SLIDE = 0
 TITLE_SHAPE = 0 # Same for other slides
 DATE_SHAPE = 1 
-CREATORS_TABLE = 2
+CREATORS_TABLE_CONF = 1
+CREATORS_TABLE_REP = 2
 TABLE_COORDS = {
     "preparers": (0,1),
     "reviewers": (1,1),
-    "approvers": (2,1) 
+    # "approvers": (2,1) 
 }
 
 # slide index of table of contents
@@ -32,8 +33,6 @@ TOC = 2
 # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 # *** FUNCTION DEFINITIONS ****
 # //////////////////////////////
-
-            
 
 def fetch_interfaces(dir_path):
     """
@@ -63,11 +62,11 @@ def init_reports(rep_type, conf_tools, interfaces=[]):
     """
     Initializes and returns Report based on user input and template
     """
-    templates = __load_template_paths(TXT_PATH)
+    templates = _load_template_paths(TXT_PATH)
     reports = None
     # Instantiate report based on user input
     if rep_type == "si" and interfaces:
-        reports = [ SIReport(interface, templates[rep_type]) for interface in interfaces ]
+        reports = [ SIReport(templates[rep_type], interface) for interface in interfaces ]
     elif rep_type == "pi":
         reports = PIReport(templates[rep_type])
     elif rep_type == "emc":
@@ -81,7 +80,7 @@ def init_reports(rep_type, conf_tools, interfaces=[]):
     return reports
 
 
-def __load_template_paths(file_path):
+def _load_template_paths(file_path):
     """
     Fetches template paths and returns dict mapping report type to template
     """
@@ -112,7 +111,7 @@ def make_cover(conf_tools, report):
     cover = report.pptx.slides[COVER_SLIDE]
     title = __get_title(report) 
 
-    cover.shapes[TITLE_SHAPE].text = title 
+    cover.shapes[TITLE_SHAPE].text = title
     cover.shapes[DATE_SHAPE].text = __get_date()
     creators = conf_tools.get_creators()
 
@@ -120,7 +119,7 @@ def make_cover(conf_tools, report):
     for key, coords in TABLE_COORDS.items():
         for party in creators: 
             if key == party:
-                cover.shapes[CREATORS_TABLE].cell(coords).text = creators[party]
+                cover.shapes[CREATORS_TABLE_REP].cell(coords[0], coords[1]).text = creators[party]
 
     print(f"Cover slide generated for {title}.")
 
@@ -202,7 +201,7 @@ def copy_slides(conf_tools, report):
                 rep_slide = report.pptx.slides[new_index]
 
                 # Copy title of conf_tools slide to report slide
-                rep_slide.shapes[TITLE_SHAPE].text = conf_slide.shapes[TITLE_SHAPE].text
+                rep_slide.shapes[TITLE_SHAPE].text = conf_slide.shapes[TITLE_SHAPE].text[:]
 
                 __copy_shapes(conf_slide, conf_tools.slides.index(conf_slide), rep_slide)
 
@@ -215,7 +214,7 @@ def __copy_shapes(src_slide, src_index, dest_slide):
     and creates matching shapes in destination slide
     Returns None (mutates dest_slide)
     """
-    curr = 1 # Starts at 1 to exclude title shape
+    curr = 1 # Shape pointer; starts at 1 to exclude title shape
     for shape in src_slide.shapes[TITLE_SHAPE+1:]:
         # Read position of original
         top = shape.top
@@ -226,7 +225,7 @@ def __copy_shapes(src_slide, src_index, dest_slide):
         if shape.has_text_frame:
             # Add new textbox and add text thereto
             dest_slide.shapes.add_textbox(left, top, width, height)
-            dest_slide.shapes[curr].text = shape.text
+            dest_slide.shapes[curr].text = shape.text[:]
             curr += 1
 
         elif shape.has_table:
@@ -242,7 +241,7 @@ def __copy_shapes(src_slide, src_index, dest_slide):
             # Copy over contents from original to new table
             for cell in cells:
                 for new_cell in dest_slide.shapes[curr].table.iter_cells():
-                    new_cell.text = cell.text
+                    new_cell.text = cell.text[:]
             curr += 1
 
         else:
@@ -364,13 +363,13 @@ class ConfirmationTools(Report):
         creators = {
             "preparers": "",
             "reviewers": "",
-            "approvers": ""
+            # "approvers": ""
         }
 
-        for coords in TABLE_COORDS.values():
-            for party in creators:
+        for party, coords in TABLE_COORDS.items():
+            if party in creators.keys():
                 creators[party] = self.pptx.slides[COVER_SLIDE].\
-                                shapes[CREATORS_TABLE].table.cell(coords).text
+                                shapes[CREATORS_TABLE_CONF].table.cell(coords[0], coords[1]).text[:]
 
         return creators
 
@@ -386,34 +385,46 @@ class ConfirmationTools(Report):
             "topology": None
         }
 
-        y = 1 # Starting y coord of table traversal
+        row = 1 # Starting y coord of table traversal
         while True:
-            section_name = toc.cell(0, y).text.lower()
+            section_name = toc.cell(row, 0).text[:]
+            section_name = section_name.lower()
             # Only contents in section 2 is of interest
-            if section_name.startswith("2"):
-                if section_name.find("target") > -1:
-                    slide_num = toc.cell(1, y).text
-                    toc_dict["sim_targets"] = slide_num
-                elif section_name.find("mask") > -1:
-                    slide_num = toc.cell(1, y).text
-                    toc_dict["eye_masks"] = slide_num
-                elif section_name.find("topology") > -1:
-                    slide_num = toc.cell(1, y).text
-                    toc_dict["topology"] = slide_num
+            try:
+                if re.search(r"^\s*2\.", section_name):
+                    if section_name.find("target") > -1:
+                        slide_num = toc.cell(row, 1).text[:]
+                        toc_dict["sim_targets"] = slide_num
+                    elif section_name.find("mask") > -1:
+                        slide_num = toc.cell(row, 1).text[:]
+                        toc_dict["eye_masks"] = slide_num
+                    elif section_name.find("topology") > -1:
+                        slide_num = toc.cell(row, 1).text[:]
+                        toc_dict["topology"] = slide_num
+                # Check if end of TOC in order to end loop
+                elif section_name == "":
+                    break
                 # Move down TOC
-                y += 1 
-            # Check if end of TOC in order to end loop
-            elif section_name == "" or IndexError:
+                row += 1 
+            # In case pointer has reached end of TOC
+            except IndexError:
                 break
 
         # Convert str slide_nums to int for slide indexing
-        for slide_num in toc_dict.values():
+        for section, slide_nums in toc_dict.items():
             # Check if range of slide_nums
-            if slide_num.find("-") > -1:
-                slide_num.split("-")
-                slide_num = [ int(num) - 1 for num in slide_num ]
+            # In case of hyphen type -
+            if slide_nums.find("-") > -1:
+                slide_nums = slide_nums.split("-")
+                toc_dict[section] = [ int(num) - 1 for num in slide_nums ]
+            # In case of hyphen type ―    
+            elif slide_nums.find("\u2013") > -1:
+                slide_nums = slide_nums.split("\u2013") 
+                toc_dict[section] = [ int(num) - 1 for num in slide_nums ]
+            # If single number
             else:
-                slide_num = list(int(slide_num) - 1) # Keep returned data structures consistent
+                print(slide_nums)
+                toc_dict[section] = list(int(slide_nums) - 1) # Keep returned data structures consistent
         
         return toc_dict
 
@@ -463,17 +474,21 @@ class SimulationReport(Report):
     def __str__(self):
         return NotImplementedError
 
+    @property
+    def report_type(self):
+        return self.__rep_type
+
 
 class SIReport(SimulationReport):
     """
     Class for PCB signal integrity report
     """
     def __init__(self, template, interface):
-        super().__init__(template=template, sim_type="SI")
+        super().__init__(template=template, rep_type="SI")
         self.__interface = interface
 
     def __str__(self):
-        return f"SI Report for {self.interface}"
+        return f"{self.report_type} Report for {self.interface}"
 
     @property
     def interface(self):
@@ -485,7 +500,7 @@ class PIReport(SimulationReport):
     Class for PCB power integrity report
     """
     def __init__(self, template):
-        super().__init__(template=template, sim_type="PI")
+        super().__init__(template=template, rep_type="PI")
         self.__net_names = []
 
     def __str__(self):
@@ -505,7 +520,7 @@ class EMCReport(SimulationReport):
     Class for PCB EMC report
     """
     def __init__(self, template):
-        super().__init__(template=template, sim_type="EMC")
+        super().__init__(template=template, rep_type="EMC")
 
     def __str__(self):
         pass
@@ -515,7 +530,7 @@ class ThermalReport(SimulationReport):
     Class for PCB thermal report
     """
     def __init__(self, template):
-        super().__init__(template=template, sim_type="Thermal")
+        super().__init__(template=template, rep_type="Thermal")
 
     def __str__(self):
         pass
