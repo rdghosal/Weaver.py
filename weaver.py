@@ -1,6 +1,7 @@
 #!usr/bin/env python
 import os, sys, argparse, re
 
+from time import sleep
 from abc import ABC, abstractmethod
 from pptx import Presentation
 from pptx.enum.shapes import MSO_CONNECTOR
@@ -9,6 +10,9 @@ from pptx.enum.shapes import MSO_CONNECTOR
 # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 # *** GLOBAL CONSTANTS ****
 # //////////////////////////////
+
+# Path to textfile listing template paths
+TXT_PATH = "paths_to_templates.txt"
 
 # For cover slide
 COVER_SLIDE = 0
@@ -29,7 +33,55 @@ TOC = 2
 # *** FUNCTION DEFINITIONS ****
 # //////////////////////////////
 
-def load_template_paths(file_path):
+            
+
+def fetch_interfaces(dir_path):
+    """
+    Crawls simulation directory to fetch names of interfaces
+    """
+    if not os.path.isabs(dir_path) or \
+        os.path.split(dir_path)[1] != "Simulation":
+        print("ERROR: Simulation folder could not be found.")
+        sys.exit(-1)
+
+    return os.listdir(dir_path)
+
+
+def weave_reports(rep_type, conf_path, interfaces=[]):
+    """
+    Generate reports based on input confirmation tools and indicated type
+    """
+    ct = ConfirmationTools(conf_path) # Initialize confirmation tools
+    reports = init_reports(rep_type, ct, interfaces) # Initialize reports
+    for rep in reports:
+        make_cover(ct, rep)
+        copy_slides(ct, rep)
+        save_report(rep)
+
+
+def init_reports(rep_type, conf_tools, interfaces=[]):
+    """
+    Initializes and returns Report based on user input and template
+    """
+    templates = __load_template_paths(TXT_PATH)
+    reports = None
+    # Instantiate report based on user input
+    if rep_type == "si" and interfaces:
+        reports = [ SIReport(interface, templates[rep_type]) for interface in interfaces ]
+    elif rep_type == "pi":
+        reports = PIReport(templates[rep_type])
+    elif rep_type == "emc":
+        reports = EMCReport(templates[rep_type])
+    else:
+        reports = ThermalReport(templates[rep_type])
+
+    if not isinstance(reports, list):
+        reports = list(reports)
+
+    return reports
+
+
+def __load_template_paths(file_path):
     """
     Fetches template paths and returns dict mapping report type to template
     """
@@ -51,53 +103,56 @@ def load_template_paths(file_path):
                     templates[rep_type] = line[start+1:] # Omit delimiter and copy remaining str into dict
     
     return templates
-            
-
-def fetch_interfaces(dir_path):
-    """
-    Crawls simulation directory to fetch names of interfaces
-    """
-    if not os.path.isabs(dir_path) or \
-        os.path.split(dir_path)[1] != "Simulation":
-        print("ERROR: Simulation folder could not be found.")
-        sys.exit(-1)
-
-    return os.listdir(dir_path)
 
 
-def get_report_type():
+def make_cover(conf_tools, report):
     """
-    Returns a valid report type from user
+    Generates first slide of report
     """
-    sim_types = ["si", "pi", "emc", "thermal"] # Types of PCB simulation reports
+    cover = report.pptx.slides[COVER_SLIDE]
+    title = __get_title(report) 
+
+    cover.shapes[TITLE_SHAPE].text = title 
+    cover.shapes[DATE_SHAPE].text = __get_date()
+    creators = conf_tools.get_creators()
+
+    # Match table coordinates with Report.creator keys and insert values of latter
+    for key, coords in TABLE_COORDS.items():
+        for party in creators: 
+            if key == party:
+                cover.shapes[CREATORS_TABLE].cell(coords).text = creators[party]
+
+    print(f"Cover slide generated for {title}.")
+
+
+def __get_title(report):
+    """
+    Returns user input title for a particular file
+    """
+    title = ""
     while True:
-        rep_type = input("Input type of report (SI / PI / EMC / Thermal): " )
-        # Verify user input
-        if rep_type.lower() in sim_types:
-            break
+       title = input(f"Input title for {report}: ")
+       if title:
+           break
 
-    return rep_type
-
-
-def get_creators(conf_tools):
-    """
-    Gets list of authors, reviewers, and approvers from Confirmation Tools object
-    """
-    creators = {
-        "preparers": "",
-        "reviewers": "",
-        "approvers": ""
-    }
-
-    for coords in TABLE_COORDS.values():
-        for party in creators:
-            creators[party] = conf_tools.pptx.slides[COVER_SLIDE].\
-                              shapes[CREATORS_TABLE].table.cell(coords).text
-
-    return creators
+    return title
 
 
-def get_date():
+# def __is_rep_type():
+#     """
+#     Returns a valid report type from user
+#     """
+#     sim_types = ["si", "pi", "emc", "thermal"] # Types of PCB simulation reports
+#     while True:
+#         rep_type = input("Input type of report (SI / PI / EMC / Thermal): " )
+#         # Verify user input
+#         if rep_type.lower() in sim_types:
+#             break
+
+#     return rep_type
+
+
+def __get_date():
     """
     Returns a user inputted date formatted into Japanese
     """
@@ -122,77 +177,6 @@ def get_date():
             continue
 
     return u"{0}年　{1}月　{2}日".format(date[0], date[1], date[2])
-        
-
-def get_title(target_file):
-    """
-    Returns user input title for a particular file
-    """
-    title = ""
-    while True:
-       title = input(f"Input title of {target_file}: ")
-       if title:
-           break
-
-    return title
-
-
-def init_report(interface, templates, conf_tools):
-    """
-    Initializes and returns Report based on user input and template
-    """
-    # Get basic properties of report
-    title = get_title(f"simulation report for the interface {interface}")
-    rep_type = get_report_type()
-
-    report = None
-    # Instantiate report based on user input
-    if rep_type == "si":
-        report = SIReport(title, templates[rep_type])
-    elif rep_type == "pi":
-        report = PIReport(title, templates[rep_type])
-    elif rep_type == "emc":
-        report = EMCReport(title, templates[rep_type])
-    else:
-        report = ThermalReport(title, templates[rep_type])
-
-    report.creators = conf_tools.creators 
-    report.date = get_date()
-
-    return report
-
-
-def save_report(report, path):
-    """
-    Gets filename from user and closes report after saving
-    """
-    filename = ""
-    while True:
-        filename = input("Input filename to save the report: ")
-        if filename:
-            break
-
-    report.pptx.save(filename)
-    print(f"{filename} saved in {path}.")
-
-
-def make_cover(report):
-    """
-    Generates first slide of report
-    """
-    # Used to map creators to correct cell in table
-
-    cover = report.pptx.slides[COVER_SLIDE]
-    cover.shapes[TITLE_SHAPE].text = report.title
-    cover.shapes[DATE_SHAPE].text = report.date
-
-    # Match table coordinates with Report.creator keys and insert values of latter
-    for key, coords in TABLE_COORDS.items():
-        for party in report.creators: 
-            if key == party:
-                cover.shapes[CREATORS_TABLE].cell(coords).text = report.creators[party]
-
-    print(f"Cover slide generated for {report.title}.")
 
 
 def copy_slides(conf_tools, report):
@@ -200,7 +184,7 @@ def copy_slides(conf_tools, report):
     Copies over slides of interest 
     from confirmation tools to report
     """
-    toc = conf_tools.table_of_contents.copy() # Avoid side effects
+    toc = conf_tools.get_toc()
     # Read each slide according to toc
     for section in toc:
         for slide_nums in toc[section]:
@@ -311,16 +295,28 @@ def __copy_group_shape(src_shape, dest_shape):
             # Default to Straight
             dest_shape.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, begin, end)
             dest_shape
-
+        # Move to next shape
         curr_sub += 1
 
-    # Cleanup
+    # Cleanup temp folder made for images
     if "temp" in os.listdir("."):
         os.rmdir("temp")
 
 
-def weave_reports(templates, interfaces):
-    pass
+def save_report(report):
+    """
+    Gets filename from user and closes report after saving
+    """
+    filename = ""
+    path = ""
+    while True:
+        filename = input("Input filename to save the report: ")
+        path = input("Input path to save report: ")
+        if filename and os.path.isabs(path):
+            break
+
+    report.pptx.save(os.path.join(path, filename))
+    print(f"{filename} saved in {path}.")
 
 
 # def make_TOU(report):
@@ -345,47 +341,43 @@ class Report(ABC):
     """
     Base class for simulation report
     """
-    def __init__(self, title, template):
+    def __init__(self, template):
         self.__pptx = Presentation(template)
-        self.__title = title
-        self.__creators = {}
-        self.__date = ""
     
     @property
     def pptx(self):
         return self.__pptx
-
-    @property
-    def title(self):
-        return self.__title
-
-    @property
-    def creators(self):
-        return self.__creators
-
-    @creators.setter
-    def creators(self, value):
-        self.__creators = value
-
-    @property
-    def date(self):
-        return self.__date
-
-    @date.setter
-    def date(self, value):
-        self.__date = value
 
 
 class ConfirmationTools(Report):
     """
     Class for initial, pre-simulation report
     """
-    def __init__(self, title, file):
-        super().__init__(title, "conf_tools", file)
-        self.__creators = get_creators(self) # Override base class
+    def __init__(self, file):
+        super().__init__(file)
 
-    def fetch_toc(self):
-        # Memoize slide num for slides of interest
+    def get_creators(self):
+        """
+        Gets list of authors, reviewers, and approvers 
+        from Confirmation Tools object
+        """
+        creators = {
+            "preparers": "",
+            "reviewers": "",
+            "approvers": ""
+        }
+
+        for coords in TABLE_COORDS.values():
+            for party in creators:
+                creators[party] = self.pptx.slides[COVER_SLIDE].\
+                                shapes[CREATORS_TABLE].table.cell(coords).text
+
+        return creators
+
+    def get_toc(self):
+        """
+        Returns dict of section->slide_num(s) for sections of interest
+        """
         toc = self.pptx.slides[TOC].shapes[0].table # Save table
         # To be populated with slide nums
         toc_dict = {
@@ -416,11 +408,12 @@ class ConfirmationTools(Report):
 
         # Convert str slide_nums to int for slide indexing
         for slide_num in toc_dict.values():
+            # Check if range of slide_nums
             if slide_num.find("-") > -1:
                 slide_num.split("-")
                 slide_num = [ int(num) - 1 for num in slide_num ]
             else:
-                slide_num = list(int(slide_num) - 1) # Keep data structure consistent
+                slide_num = list(int(slide_num) - 1) # Keep returned data structures consistent
         
         return toc_dict
 
@@ -456,30 +449,47 @@ class SimulationReport(Report):
     """
     Base class for simulation reports
     """
-    def __init__(self, title, template, sim_type):
-        super().__init__(title, template)
-        self.__sim_type = sim_type
+    __rep_types = ["si", "pi", "emc", "thermal"]
 
-    @property
-    def simulation_type(self):
-        return self.__sim_type
+    def __init__(self, template, rep_type):
+        super().__init__(template)
+        self.__rep_type = rep_type
+
+    @staticmethod
+    def report_types():
+        return SimulationReport.__rep_types
+    
+    @abstractmethod
+    def __str__(self):
+        return NotImplementedError
 
 
 class SIReport(SimulationReport):
     """
     Class for PCB signal integrity report
     """
-    def __init__(self, title, template):
-        super().__init__(title, "SI", template)
+    def __init__(self, template, interface):
+        super().__init__(template=template, sim_type="SI")
+        self.__interface = interface
 
+    def __str__(self):
+        return f"SI Report for {self.interface}"
+
+    @property
+    def interface(self):
+        return self.__interface
+    
 
 class PIReport(SimulationReport):
     """
     Class for PCB power integrity report
     """
-    def __init__(self, title, template):
-        super().__init__(title, "PI", template)
+    def __init__(self, template):
+        super().__init__(template=template, sim_type="PI")
         self.__net_names = []
+
+    def __str__(self):
+        pass
 
     @property
     def net_names(self):
@@ -494,16 +504,21 @@ class EMCReport(SimulationReport):
     """
     Class for PCB EMC report
     """
-    def __init__(self, title, template):
-        super().__init__(title, "EMC", template)
+    def __init__(self, template):
+        super().__init__(template=template, sim_type="EMC")
 
+    def __str__(self):
+        pass
 
 class ThermalReport(SimulationReport):
     """
     Class for PCB thermal report
     """
-    def __init__(self, title, template):
-        super().__init__(title, "Thermal", template)
+    def __init__(self, template):
+        super().__init__(template=template, sim_type="Thermal")
+
+    def __str__(self):
+        pass
 
 
 # # ==============
@@ -644,11 +659,31 @@ if __name__ == "__main__":
             For more information refer to the README.
            """
     parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument("simulation_directory", help="Simulation directory") 
+    # Positional args
+    parser.add_argument("conf_tools", required=True, help="Path to confirmation tools for simulation reports")
+    parser.add_argument("report_type", required=True, help="Type of report (SI / PI / EMC / Thermal)")
+    # Optional args
+    parser.add_argument("-s", "--simulation_dir", nargs="?", help="Path to simulation directory") 
 
+    # Retrieve args
     args = parser.parse_args()   
 
-    templates = load_template_paths(args.textfile)
-    interfaces = fetch_interfaces(args.simulation_directory)
+    # Process input from positional args    
+    conf_path = args.conf_tools 
+    rep_type = args.report_type.lower()
+    # Verify report type
+    if rep_type not in SimulationReport.report_types():
+        print("ERROR: Report type is invalid")
+        sys.exit(-1)
+    
+    # Process input from optional args
+    sim_dir = args.simulation_dir
+    interfaces = fetch_interfaces(args.simulation_dir) if sim_dir else []
 
-    weave_reports(templates, interfaces)
+    # Make reports based on inputs and print confirmation
+    weave_reports(rep_type, conf_path, interfaces)
+    print(f"Weaving of report(s) for simulation type {rep_type.upper()} complete.\n")
+    
+    # Close program
+    sleep(1)
+    input("Press any key to quit.\n")
