@@ -675,10 +675,11 @@ if __name__ == "__main__":
            """
     parser = argparse.ArgumentParser(description=desc)
     # Positional args
-    parser.add_argument("conf_tools", required=True, help="Path to confirmation tools for simulation reports")
-    parser.add_argument("report_type", required=True, help="Type of report (SI / PI / EMC / Thermal)")
+    parser.add_argument("conf_tools", help="Path to confirmation tools for simulation reports")
+    parser.add_argument("report_type", help="Type of report (SI / PI / EMC / Thermal)")
     # Optional args
-    parser.add_argument("-s", "--simulation_dir", nargs="?", help="Path to simulation directory") 
+    parser.add_argument("-s", "--simulation_dir", nargs=1, help="Path to simulation directory") 
+    parser.add_argument("-i", "--image_dir", nargs=1, help="Path to directory of images to be included in the report(s)")
 
     # Retrieve args
     args = parser.parse_args()   
@@ -692,6 +693,7 @@ if __name__ == "__main__":
         sys.exit(-1)
     
     # Process input from optional args
+    img_dir = args.image_dir # TODO: Conditional logic for image_dir opt
     sim_dir = args.simulation_dir
     interfaces = fetch_interfaces(args.simulation_dir) if sim_dir else []
 
