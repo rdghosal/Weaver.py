@@ -1,10 +1,11 @@
 #!usr/bin/env python
 import os, sys, argparse, re
+import win32com.client as win32
 
 from time import sleep
 from abc import ABC, abstractmethod
 from pptx import Presentation
-from pptx.enum.shapes import MSO_CONNECTOR
+# from pptx.enum.shapes import MSO_CONNECTOR
 
 
 # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -15,20 +16,20 @@ from pptx.enum.shapes import MSO_CONNECTOR
 TXT_PATH = "paths_to_templates.txt"
 
 # For cover slide
-COVER_SLIDE = 0
-TITLE_SHAPE = 0 # Same for other slides
-DATE_SHAPE = 1 
-CREATORS_TABLE_CONF = 1
-CREATORS_TABLE_REP = 2
+COVER_SLIDE = 1 # Indexing starts at 1 for COM Objects
+TITLE_SHAPE = 3 # Same for other slides # TODO: Test consistency
+DATE_SHAPE = 2 # TODO: Test consistency
+CREATORS_TABLE_CONF = 2 # TODO: Phase out and search for Table instead (.HasTable == -1)
+CREATORS_TABLE_REP = 2 # TODO: Phase out and search for Table instead (.HasTable == -1)
 TABLE_COORDS = {
-    "preparers": (0,1),
-    "reviewers": (1,1),
-    # "approvers": (2,1) 
+    "preparers": (1,2),
+    "reviewers": (2,2),
+    # "approvers": (3,1) 
 }
 
 # slide index of table of contents
-TOC = 2
-
+TOC = 3
+MSOTRUE = -1
 
 # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 # *** FUNCTION DEFINITIONS ****
@@ -50,7 +51,8 @@ def weave_reports(rep_type, conf_path, interfaces=[]):
     """
     Generate reports based on input confirmation tools and indicated type
     """
-    ct = ConfirmationTools(conf_path) # Initialize confirmation tools
+    PowerPoint = win32.gencache.EnsureDispatch("PowerPoint.Application") # Instantiate PowerPoint singleton
+    ct = ConfirmationTools(PowerPoint.Presentations.Open(conf_path, WithWindow=False)) # Initialize confirmation tools
     reports = init_reports(rep_type, ct, interfaces) # Initialize reports
     for rep in reports:
         make_cover(ct, rep)
@@ -78,7 +80,6 @@ def init_reports(rep_type, conf_tools, interfaces=[]):
         reports = list(reports)
 
     return reports
-
 
 def _load_template_paths(file_path):
     """
@@ -175,7 +176,18 @@ def __get_date():
         except: 
             continue
 
-    return u"{0}年　{1}月　{2}日".format(date[0], date[1], date[2])
+    return u"{0}年　{1}月　{2}日".format(date[0], date[1], date[2]) # TODO: Change formatting to dd MM yyyy 
+
+
+def find_table(shapes):
+    """
+    Iterates over a Slide's collection of Shapes 
+    and returns first shape found to have a Table object
+    """
+    for shape in shapes:
+        if shape.HasTable == MSOTRUE:
+            return shape.Table
+    return None 
 
 
 def copy_slides(conf_tools, report):
@@ -187,6 +199,8 @@ def copy_slides(conf_tools, report):
     # Read each slide according to toc
     for section in toc:
         for slide_nums in toc[section]:
+            if section == "sim_targets": # Do not copy pages listed in sim_targets 
+                continue
             for slide_num in slide_nums:
                 # Get curr slide of conf_tools
                 conf_slide = conf_tools.pptx.slides[slide_num]
@@ -340,8 +354,8 @@ class Report(ABC):
     """
     Base class for simulation report
     """
-    def __init__(self, template):
-        self.__pptx = Presentation(template)
+    def __init__(self, pptx_obj):
+        self.__pptx = pptx_obj
     
     @property
     def pptx(self):
@@ -352,8 +366,8 @@ class ConfirmationTools(Report):
     """
     Class for initial, pre-simulation report
     """
-    def __init__(self, file):
-        super().__init__(file)
+    def __init__(self, pptx):
+        super().__init__(pptx)
 
     def get_creators(self):
         """
@@ -365,11 +379,11 @@ class ConfirmationTools(Report):
             "reviewers": "",
             # "approvers": ""
         }
-
         for party, coords in TABLE_COORDS.items():
             if party in creators.keys():
-                creators[party] = self.pptx.slides[COVER_SLIDE].\
-                                shapes[CREATORS_TABLE_CONF].table.cell(coords[0], coords[1]).text[:]
+                creators[party] = self.pptx.Slides(COVER_SLIDE).\
+                                  Shapes(CREATORS_TABLE_CONF).Table.\
+                                  Cell(coords[0], coords[1]).Shape.TextFrame.TextRange.Text[:]
 
         return creators
 
@@ -377,7 +391,7 @@ class ConfirmationTools(Report):
         """
         Returns dict of section->slide_num(s) for sections of interest
         """
-        toc = self.pptx.slides[TOC].shapes[0].table # Save table
+        toc = find_table(self.pptx.Slides(TOC).Shapes)
         # To be populated with slide nums
         toc_dict = {
             "sim_targets": None,
@@ -385,21 +399,21 @@ class ConfirmationTools(Report):
             "topology": None
         }
 
-        row = 1 # Starting y coord of table traversal
+        row = 2 # Starting y coord of table traversal
         while True:
-            section_name = toc.cell(row, 0).text[:]
+            section_name = toc.Cell(row, 1).Shape.TextFrame.TextRange.Text[:]
             section_name = section_name.lower()
             # Only contents in section 2 is of interest
             try:
                 if re.search(r"^\s*2\.", section_name):
                     if section_name.find("target") > -1:
-                        slide_num = toc.cell(row, 1).text[:]
+                        slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
                         toc_dict["sim_targets"] = slide_num
                     elif section_name.find("mask") > -1:
-                        slide_num = toc.cell(row, 1).text[:]
+                        slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
                         toc_dict["eye_masks"] = slide_num
                     elif section_name.find("topology") > -1:
-                        slide_num = toc.cell(row, 1).text[:]
+                        slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
                         toc_dict["topology"] = slide_num
                 # Check if end of TOC in order to end loop
                 elif section_name == "":
@@ -462,8 +476,8 @@ class SimulationReport(Report):
     """
     __rep_types = ["si", "pi", "emc", "thermal"]
 
-    def __init__(self, template, rep_type):
-        super().__init__(template)
+    def __init__(self, pptx_template, rep_type):
+        super().__init__(pptx_template)
         self.__rep_type = rep_type
 
     @staticmethod
@@ -484,7 +498,7 @@ class SIReport(SimulationReport):
     Class for PCB signal integrity report
     """
     def __init__(self, template, interface):
-        super().__init__(template=template, rep_type="SI")
+        super().__init__(pptx_template=template, rep_type="SI")
         self.__interface = interface
 
     def __str__(self):
@@ -500,7 +514,7 @@ class PIReport(SimulationReport):
     Class for PCB power integrity report
     """
     def __init__(self, template):
-        super().__init__(template=template, rep_type="PI")
+        super().__init__(pptx_template=template, rep_type="PI")
         self.__net_names = []
 
     def __str__(self):
@@ -520,7 +534,7 @@ class EMCReport(SimulationReport):
     Class for PCB EMC report
     """
     def __init__(self, template):
-        super().__init__(template=template, rep_type="EMC")
+        super().__init__(pptx_template=template, rep_type="EMC")
 
     def __str__(self):
         pass
@@ -530,7 +544,7 @@ class ThermalReport(SimulationReport):
     Class for PCB thermal report
     """
     def __init__(self, template):
-        super().__init__(template=template, rep_type="Thermal")
+        super().__init__(pptx_template=template, rep_type="Thermal")
 
     def __str__(self):
         pass

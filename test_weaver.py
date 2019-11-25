@@ -1,6 +1,7 @@
 import weaver
 import pytest
 import os
+import win32com.client as win32
 
 from weaver import ConfirmationTools
 
@@ -17,6 +18,9 @@ to be at work in freeing memory.
 # \\\\\\\\\\\\\\\\\\\\\\
 #  HELPER FUNCTION TESTS
 # //////////////////////
+
+PowerPoint = win32.gencache.EnsureDispatch("PowerPoint.Application")
+Presentations = PowerPoint.Presentations
 
 def set_test_params(path):
     """
@@ -87,7 +91,7 @@ def test_load_template_paths():
 # //////////////////////
 
 # Global instance of ConfirmationTools
-test_ct = ConfirmationTools(PARAMS["conf_path"])
+test_ct = ConfirmationTools(Presentations.Open(PARAMS["conf_path"], WithWindow=False))
 
 def test_get_creators():
     
