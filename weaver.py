@@ -4,7 +4,8 @@ import win32com.client as win32
 
 from time import sleep
 from abc import ABC, abstractmethod
-from pptx import Presentation
+from datetime import date
+# from pptx import Presentation
 # from pptx.enum.shapes import MSO_CONNECTOR
 
 
@@ -17,10 +18,10 @@ TXT_PATH = "paths_to_templates.txt"
 
 # For cover slide
 COVER_SLIDE = 1 # Indexing starts at 1 for COM Objects
-TITLE_SHAPE = 3 # Same for other slides # TODO: Test consistency
+# TITLE_SHAPE = 3 # Same for other slides # TODO: Test consistency
 DATE_SHAPE = 2 # TODO: Test consistency
-CREATORS_TABLE_CONF = 2 # TODO: Phase out and search for Table instead (.HasTable == -1)
-CREATORS_TABLE_REP = 2 # TODO: Phase out and search for Table instead (.HasTable == -1)
+# CREATORS_TABLE_CONF = 2 # TODO: Phase out and search for Table instead (.HasTable == -1)
+# CREATORS_TABLE_REP = 2 # TODO: Phase out and search for Table instead (.HasTable == -1)
 TABLE_COORDS = {
     "preparers": (1,2),
     "reviewers": (2,2),
@@ -30,6 +31,8 @@ TABLE_COORDS = {
 # slide index of table of contents
 TOC = 3
 MSOTRUE = -1
+TITLE_NAME = "Rectangle 26"
+DATE_NAME = u"テキスト プレースホルダー 10"
 
 # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 # *** FUNCTION DEFINITIONS ****
@@ -51,13 +54,16 @@ def weave_reports(rep_type, conf_path, interfaces=[]):
     """
     Generate reports based on input confirmation tools and indicated type
     """
-    PowerPoint = win32.gencache.EnsureDispatch("PowerPoint.Application") # Instantiate PowerPoint singleton
-    ct = ConfirmationTools(PowerPoint.Presentations.Open(conf_path, WithWindow=False)) # Initialize confirmation tools
+    PowerPoint = win32.gencache.EnsureDispatch("PowerPoint.Application") # Start PowerPoint process
+    ct = ConfirmationTools(PowerPoint.Presentations.Open(conf_path, WithWindow=False)) # Make ConfirmationTools instance (not visible) 
     reports = init_reports(rep_type, ct, interfaces) # Initialize reports
     for rep in reports:
         make_cover(ct, rep)
         copy_slides(ct, rep)
         save_report(rep)
+
+    ct.pptx.Close() # Save, to avoid file corruption, w/o saving
+    PowerPoint.Quit() # Close PowerPoint process
 
 
 def init_reports(rep_type, conf_tools, interfaces=[]):
@@ -66,20 +72,24 @@ def init_reports(rep_type, conf_tools, interfaces=[]):
     """
     templates = _load_template_paths(TXT_PATH)
     reports = None
+    proj_num = conf_tools.proj_num[:]
+
     # Instantiate report based on user input
     if rep_type == "si" and interfaces:
-        reports = [ SIReport(templates[rep_type], interface) for interface in interfaces ]
+        reports = [ SIReport(templates[rep_type], interface, proj_num) for interface in interfaces ]
     elif rep_type == "pi":
-        reports = PIReport(templates[rep_type])
+        reports = PIReport(templates[rep_type], proj_num)
     elif rep_type == "emc":
-        reports = EMCReport(templates[rep_type])
+        reports = EMCReport(templates[rep_type], proj_num)
     else:
-        reports = ThermalReport(templates[rep_type])
+        reports = ThermalReport(templates[rep_type], proj_num)
 
+    # Ensure returned object is of consistent data structure
     if not isinstance(reports, list):
         reports = list(reports)
 
     return reports
+
 
 def _load_template_paths(file_path):
     """
@@ -107,35 +117,39 @@ def _load_template_paths(file_path):
 
 def make_cover(conf_tools, report):
     """
-    Generates first slide of report
+    Sets first slide of report from args and user input
     """
-    cover = report.pptx.slides[COVER_SLIDE]
-    title = __get_title(report) 
+    conf_tools.pptx.Slide(COVER_SLIDE).Copy() # Copy cover slide unto Clipboard
+    report.pptx.Slides.Paste(COVER_SLIDE) # Paste so as to make it the first slide in the report
 
-    cover.shapes[TITLE_SHAPE].text = title
-    cover.shapes[DATE_SHAPE].text = __get_date()
-    creators = conf_tools.get_creators()
+    # Grab the pasted cover slide
+    # and iterate over its shapes in order to replace their contents
+    cover = report.pptx.Slide(COVER_SLIDE)
+    for shape in cover.Shapes:
+        if shape.Name == TITLE_NAME:
+            shape.TextFrame.TextRange.Text = report.title[:]
+        elif shape.Name == DATE_NAME:
+            shape.TextFrame.TextRange.Text = __get_date()
+        elif shape.HasTable == MSOTRUE:
+            conf_creators = conf_tools.get_creators()
+            # Match table coordinates with creator keys and insert values of latter
+            for group, coords in TABLE_COORDS.items():
+                cover.Shapes.Table.Cell(coords[0], coords[1]).Shape.TextFrame.TextRange.Text = conf_creators[group][:]
 
-    # Match table coordinates with Report.creator keys and insert values of latter
-    for key, coords in TABLE_COORDS.items():
-        for party in creators: 
-            if key == party:
-                cover.shapes[CREATORS_TABLE_REP].cell(coords[0], coords[1]).text = creators[party]
-
-    print(f"Cover slide generated for {title}.")
+    print(f"Cover slide generated for {report.title}.")
 
 
-def __get_title(report):
-    """
-    Returns user input title for a particular file
-    """
-    title = ""
-    while True:
-       title = input(f"Input title for {report}: ")
-       if title:
-           break
+# def __get_title(report):
+#     """
+#     Returns user input title for a particular file
+#     """
+#     title = ""
+#     while True:
+#        title = input(f"Input title for {report}: ")
+#        if title:
+#            break
 
-    return title
+#     return title
 
 
 # def __is_rep_type():
@@ -162,7 +176,7 @@ def __get_date():
         prompt = """
         Input report date as follows:
 
-        yyyy,MM,dd
+        yyyy-MM-dd
 
         where:
         yyyy -> year
@@ -171,23 +185,12 @@ def __get_date():
         """
         # Check if instructions were followed
         try:
-            date = input(prompt).split(",") # Split for output str formatting
+            date = date.fromisoformat(input(prompt))
             break
         except: 
             continue
 
-    return u"{0}年　{1}月　{2}日".format(date[0], date[1], date[2]) # TODO: Change formatting to dd MM yyyy 
-
-
-def find_table(shapes):
-    """
-    Iterates over a Slide's collection of Shapes 
-    and returns first shape found to have a Table object
-    """
-    for shape in shapes:
-        if shape.HasTable == MSOTRUE:
-            return shape.Table
-    return None 
+    return f"{date.strftime('%d %b. %Y')}" # Formats as e.g. 07 Feb. 2001, 15 Nov. 1753 etc.
 
 
 def copy_slides(conf_tools, report):
@@ -199,121 +202,112 @@ def copy_slides(conf_tools, report):
     # Read each slide according to toc
     for section in toc:
         for slide_nums in toc[section]:
-            if section == "sim_targets": # Do not copy pages listed in sim_targets 
+            if section == "sim_targets": # Avoids copying pages listed in sim_targets 
                 continue
             for slide_num in slide_nums:
-                # Get curr slide of conf_tools
-                conf_slide = conf_tools.pptx.slides[slide_num]
+                # Copy current slide unto Clipboard
+                conf_tools.pptx.Slides(slide_num).Copy()
                 
-                # Add a slide of the same format in the report
-                layout_name = conf_tools.pptx.slides[slide_num].slide_layout.name
-                layout = report.pptx.slides.slide_layout.get_by_name(layout_name)
-                report.pptx.slides.add_slide(layout)
-
-                # Fetch newly appended slide
-                new_index = len(report.pptx.slides) - 1
-                rep_slide = report.pptx.slides[new_index]
-
-                # Copy title of conf_tools slide to report slide
-                rep_slide.shapes[TITLE_SHAPE].text = conf_slide.shapes[TITLE_SHAPE].text[:]
-
-                __copy_shapes(conf_slide, conf_tools.slides.index(conf_slide), rep_slide)
+                # Paste slide on Clipboard into the same position if possible;
+                # otherwise, append to end
+                pos = slide_num if slide_num <= len(report.Slides) else ""
+                report.Slides.Paste(pos)
 
     return report
 
 
-def __copy_shapes(src_slide, src_index, dest_slide):
-    """
-    Iterates over source slide's shapes 
-    and creates matching shapes in destination slide
-    Returns None (mutates dest_slide)
-    """
-    curr = 1 # Shape pointer; starts at 1 to exclude title shape
-    for shape in src_slide.shapes[TITLE_SHAPE+1:]:
-        # Read position of original
-        top = shape.top
-        left = shape.left
-        height = shape.height
-        width = shape.width                    
+# def __copy_shapes(src_slide, src_index, dest_slide):
+#     """
+#     Iterates over source slide's shapes 
+#     and creates matching shapes in destination slide
+#     Returns None (mutates dest_slide)
+#     """
+#     curr = 1 # Shape pointer; starts at 1 to exclude title shape
+#     for shape in src_slide.shapes[TITLE_SHAPE+1:]:
+#         # Read position of original
+#         top = shape.top
+#         left = shape.left
+#         height = shape.height
+#         width = shape.width                    
 
-        if shape.has_text_frame:
-            # Add new textbox and add text thereto
-            dest_slide.shapes.add_textbox(left, top, width, height)
-            dest_slide.shapes[curr].text = shape.text[:]
-            curr += 1
+#         if shape.has_text_frame:
+#             # Add new textbox and add text thereto
+#             dest_slide.shapes.add_textbox(left, top, width, height)
+#             dest_slide.shapes[curr].text = shape.text[:]
+#             curr += 1
 
-        elif shape.has_table:
-            # Extract data from table
-            table = shape.table
-            cols = len(table.columns)
-            rows = len(table.rows)
-            cells = table.iter_cells() # Cell generator w/ text prop
+#         elif shape.has_table:
+#             # Extract data from table
+#             table = shape.table
+#             cols = len(table.columns)
+#             rows = len(table.rows)
+#             cells = table.iter_cells() # Cell generator w/ text prop
 
-            # Make table
-            dest_slide.shapes.add_table(rows, cols, left, top, width, height)
+#             # Make table
+#             dest_slide.shapes.add_table(rows, cols, left, top, width, height)
 
-            # Copy over contents from original to new table
-            for cell in cells:
-                for new_cell in dest_slide.shapes[curr].table.iter_cells():
-                    new_cell.text = cell.text[:]
-            curr += 1
+#             # Copy over contents from original to new table
+#             for cell in cells:
+#                 for new_cell in dest_slide.shapes[curr].table.iter_cells():
+#                     new_cell.text = cell.text[:]
+#             curr += 1
 
-        else:
-            # Likely a group shape
-            try:
-                dest_slide.shapes.add_group_shape()
-                __copy_group_shape(shape, dest_slide.shapes[curr])
-                curr += 1
+#         else:
+#             # Likely a group shape
+#             try:
+#                 dest_slide.shapes.add_group_shape()
+#                 __copy_group_shape(shape, dest_slide.shapes[curr])
+#                 curr += 1
 
-            except AttributeError: # In case not group shape
-                print(f"Unidentifiable shape found in slide {src_index}")
+#             except AttributeError: # In case not group shape
+#                 print(f"Unidentifiable shape found in slide {src_index}")
 
 
-def __copy_group_shape(src_shape, dest_shape):
-    """
-    Iterates over source group shape
-    and creates matching shapes in destination group shape
-    Returns None (mutates dest_shape)
-    """
-    curr_sub = 0 # To track subshapes added to group shape
-    img_cnt = 1 # To differentiate img filenames
-    for shape in src_shape.shapes:
-        # Get position and dimensions of subshape
-        sub_left = shape.left
-        sub_top = shape.top
-        sub_width = shape.width
-        sub_height = shape.height
+# def __copy_group_shape(src_shape, dest_shape):
+#     """
+#     Iterates over source group shape
+#     and creates matching shapes in destination group shape
+#     Returns None (mutates dest_shape)
+#     """
+#     curr_sub = 0 # To track subshapes added to group shape
+#     img_cnt = 1 # To differentiate img filenames
+#     for shape in src_shape.shapes:
+#         # Get position and dimensions of subshape
+#         sub_left = shape.left
+#         sub_top = shape.top
+#         sub_width = shape.width
+#         sub_height = shape.height
 
-        if shape.shape_type == 13: # PICTURE
-            # Make temp folder to extract and save imgs as files
-            blob = shape.image.blob
-            if not "temp" in os.listdir("."):
-                os.mkdir("temp")
-            filename = f"temp_img-{img_cnt}.png"
-            img_path = os.path.join(os.getcwd(), "temp", filename)
-            with open(img_path, "wb") as f:
-                f.write(blob)
-            dest_shape.shapes.add_picture(filename, sub_left, sub_top,\
-                                          sub_width, sub_height)
-            img_cnt += 1
+#         if shape.shape_type == 13: # PICTURE
+#             # Make temp folder to extract and save imgs as files
+#             blob = shape.image.blob
+#             if not "temp" in os.listdir("."):
+#                 os.mkdir("temp")
+#             filename = f"temp_img-{img_cnt}.png"
+#             img_path = os.path.join(os.getcwd(), "temp", filename)
+#             with open(img_path, "wb") as f:
+#                 f.write(blob)
+#             dest_shape.shapes.add_picture(filename, sub_left, sub_top,\
+#                                           sub_width, sub_height)
+#             img_cnt += 1
 
-        elif shape.shape_type == 17: # TEXT_BOX
-            dest_shape.shapes.add_textbox(sub_left, sub_top, sub_width, sub_height)
-            dest_shape.shapes[curr_sub].text = shape.text
+#         elif shape.shape_type == 17: # TEXT_BOX
+#             dest_shape.shapes.add_textbox(sub_left, sub_top, sub_width, sub_height)
+#             dest_shape.shapes[curr_sub].text = shape.text
         
-        elif shape.shape_type == None: 
-            # Assuming shape is Connector
-            begin = shape.begin_x, shape.begin_y
-            end = shape.end_x, shape.end_y
-            # Default to Straight
-            dest_shape.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, begin, end)
-            dest_shape
-        # Move to next shape
-        curr_sub += 1
+#         elif shape.shape_type == None: 
+#             # Assuming shape is Connector
+#             begin = shape.begin_x, shape.begin_y
+#             end = shape.end_x, shape.end_y
+#             # Default to Straight
+#             dest_shape.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, begin, end)
+#             dest_shape
+#         # Move to next shape
+#         curr_sub += 1
 
-    # Cleanup temp folder made for images
-    if "temp" in os.listdir("."):
-        os.rmdir("temp")
+#     # Cleanup temp folder made for images
+#     if "temp" in os.listdir("."):
+#         os.rmdir("temp")
 
 
 def save_report(report):
@@ -323,12 +317,13 @@ def save_report(report):
     filename = ""
     path = ""
     while True:
-        filename = input("Input filename to save the report: ")
+        filename = input(f"Input filename to save the report {report.title}: ")
         path = input("Input path to save report: ")
         if filename and os.path.isabs(path):
             break
 
-    report.pptx.save(os.path.join(path, filename))
+    report.pptx.SaveAs(os.path.join(path, filename))
+    report.pptx.Close()
     print(f"{filename} saved in {path}.")
 
 
@@ -350,16 +345,44 @@ def save_report(report):
 # Report classes
 # ===============
 
-class Report(ABC):
+class Report():
     """
     Base class for simulation report
     """
     def __init__(self, pptx_obj):
         self.__pptx = pptx_obj
+        self.__title = ""
+        self.__proj_num = ""
     
     @property
     def pptx(self):
+        """
+        Returns instance of PowerPoint COM Object associated with report
+        """
         return self.__pptx
+    
+    @property
+    def proj_num(self):
+        """
+        Returns project number of report
+        """
+        return self.__proj_num
+
+    @property
+    def title(self):
+        raise NotImplementedError
+
+    def _get_table(self, shapes): # Made pseudo-private in order to improve method calls readability
+        """
+        Iterates over a Slide's collection of Shapes 
+        and returns first shape found to have a Table object
+        """
+        for shape in shapes:
+            if shape.HasTable == MSOTRUE:
+                return shape.Table
+
+        return None 
+
 
 
 class ConfirmationTools(Report):
@@ -368,6 +391,15 @@ class ConfirmationTools(Report):
     """
     def __init__(self, pptx):
         super().__init__(pptx)
+        self.__proj_num = re.search(r"(^\w{2}\d{4})", self.title).group(1)[:] # Regex project number from title
+
+    @property
+    def title(self):
+        """
+        Fetches title from cover slide
+        """
+        return self.pptx.Slides(COVER_SLIDE).\
+               Shapes(TITLE_NAME).TextFrame.TextRange.Text[:] # Pull title from cover slide
 
     def get_creators(self):
         """
@@ -379,10 +411,11 @@ class ConfirmationTools(Report):
             "reviewers": "",
             # "approvers": ""
         }
+
         for party, coords in TABLE_COORDS.items():
             if party in creators.keys():
-                creators[party] = self.pptx.Slides(COVER_SLIDE).\
-                                  Shapes(CREATORS_TABLE_CONF).Table.\
+                creators_table = self._get_table(self.pptx.Slides(COVER_SLIDE).Shapes)
+                creators[party] = creators_table.\
                                   Cell(coords[0], coords[1]).Shape.TextFrame.TextRange.Text[:]
 
         return creators
@@ -391,7 +424,7 @@ class ConfirmationTools(Report):
         """
         Returns dict of section->slide_num(s) for sections of interest
         """
-        toc = find_table(self.pptx.Slides(TOC).Shapes)
+        toc = self._get_table(self.pptx.Slides(TOC).Shapes)
         # To be populated with slide nums
         toc_dict = {
             "sim_targets": None,
@@ -476,33 +509,42 @@ class SimulationReport(Report):
     """
     __rep_types = ["si", "pi", "emc", "thermal"]
 
-    def __init__(self, pptx_template, rep_type):
+    def __init__(self, pptx_template, proj_num):
         super().__init__(pptx_template)
-        self.__rep_type = rep_type
+        self.__proj_num = proj_num
 
     @staticmethod
     def report_types():
         return SimulationReport.__rep_types
-    
-    @abstractmethod
-    def __str__(self):
-        return NotImplementedError
 
     @property
     def report_type(self):
-        return self.__rep_type
+        raise NotImplementedError 
+
+    # @abstractmethod
+    # def __str__(self):
+    #     return NotImplementedError
+
 
 
 class SIReport(SimulationReport):
     """
     Class for PCB signal integrity report
     """
-    def __init__(self, template, interface):
-        super().__init__(pptx_template=template, rep_type="SI")
+    def __init__(self, template, interface, proj_num):
+        super().__init__(template, proj_num)
         self.__interface = interface
-
+    
     def __str__(self):
         return f"{self.report_type} Report for {self.interface}"
+
+    @property
+    def title(self):
+        return f"{self.proj_num}\nVerification of Signal Integrity\n{self.interface} [Ver.1.0]"
+
+    @property
+    def report_type(self):
+        return "SI"
 
     @property
     def interface(self):
@@ -513,13 +555,21 @@ class PIReport(SimulationReport):
     """
     Class for PCB power integrity report
     """
-    def __init__(self, template):
-        super().__init__(pptx_template=template, rep_type="PI")
+    def __init__(self, template, proj_num):
+        super().__init__(template, proj_num)
         self.__net_names = []
 
     def __str__(self):
         pass
 
+    @property
+    def title(self):
+        return f"{self.proj_num}\nVerification of Power Integrity by PI Simulation [Ver.1.0]"
+
+    @property
+    def report_type(self):
+        return "PI"
+    
     @property
     def net_names(self):
         return self.__net_names
@@ -533,18 +583,27 @@ class EMCReport(SimulationReport):
     """
     Class for PCB EMC report
     """
-    def __init__(self, template):
-        super().__init__(pptx_template=template, rep_type="EMC")
+    def __init__(self, template, proj_num):
+        super().__init__(template, proj_num)
 
     def __str__(self):
         pass
+
+    @property
+    def title(self):
+        return f"{self.proj_num}\nEMC (Power Resonance) Simulation [Ver.1.0]"
+    
+    @property
+    def report_type(self):
+        return "EMC"
+
 
 class ThermalReport(SimulationReport):
     """
     Class for PCB thermal report
     """
-    def __init__(self, template):
-        super().__init__(pptx_template=template, rep_type="Thermal")
+    def __init__(self, template, proj_num):
+        super().__init__(template, proj_num)
 
     def __str__(self):
         pass
