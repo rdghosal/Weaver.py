@@ -5,8 +5,6 @@ import win32com.client as win32
 from time import sleep
 from abc import ABC, abstractmethod
 from datetime import date
-# from pptx import Presentation
-# from pptx.enum.shapes import MSO_CONNECTOR
 
 
 # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -18,323 +16,19 @@ TXT_PATH = "paths_to_templates.txt"
 
 # For cover slide
 COVER_SLIDE = 1 # Indexing starts at 1 for COM Objects
-# TITLE_SHAPE = 3 # Same for other slides # TODO: Test consistency
-DATE_SHAPE = 2 # TODO: Test consistency
-# CREATORS_TABLE_CONF = 2 # TODO: Phase out and search for Table instead (.HasTable == -1)
-# CREATORS_TABLE_REP = 2 # TODO: Phase out and search for Table instead (.HasTable == -1)
 TABLE_COORDS = {
     "preparers": (1,2),
     "reviewers": (2,2),
     # "approvers": (3,1) 
 }
 
-# slide index of table of contents
+# Slide index of table of contents
 TOC = 3
+
+# Values to verify shape identity
 MSOTRUE = -1
 TITLE_NAME = "Rectangle 26"
 DATE_NAME = u"テキスト プレースホルダー 10"
-
-# \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-# *** FUNCTION DEFINITIONS ****
-# //////////////////////////////
-
-def fetch_interfaces(dir_path):
-    """
-    Crawls simulation directory to fetch names of interfaces
-    """
-    if not os.path.isabs(dir_path) or \
-        os.path.split(dir_path)[1] != "Simulation":
-        print("ERROR: Simulation folder could not be found.")
-        sys.exit(-1)
-
-    return os.listdir(dir_path)
-
-
-def weave_reports(rep_type, conf_path, interfaces=[]):
-    """
-    Generate reports based on input confirmation tools and indicated type
-    """
-    PowerPoint = win32.gencache.EnsureDispatch("PowerPoint.Application") # Start PowerPoint process
-    ct = ConfirmationTools(PowerPoint.Presentations.Open(conf_path, WithWindow=False)) # Make ConfirmationTools instance (not visible) 
-    reports = init_reports(rep_type, ct, interfaces) # Initialize reports
-    for rep in reports:
-        make_cover(ct, rep)
-        copy_slides(ct, rep)
-        save_report(rep)
-
-    ct.pptx.Close() # Save, to avoid file corruption, w/o saving
-    PowerPoint.Quit() # Close PowerPoint process
-
-
-def init_reports(rep_type, conf_tools, interfaces=[]):
-    """
-    Initializes and returns Report based on user input and template
-    """
-    templates = _load_template_paths(TXT_PATH)
-    reports = None
-    proj_num = conf_tools.proj_num[:]
-
-    # Instantiate report based on user input
-    if rep_type == "si" and interfaces:
-        reports = [ SIReport(templates[rep_type], interface, proj_num) for interface in interfaces ]
-    elif rep_type == "pi":
-        reports = PIReport(templates[rep_type], proj_num)
-    elif rep_type == "emc":
-        reports = EMCReport(templates[rep_type], proj_num)
-    else:
-        reports = ThermalReport(templates[rep_type], proj_num)
-
-    # Ensure returned object is of consistent data structure
-    if not isinstance(reports, list):
-        reports = list(reports)
-
-    return reports
-
-
-def _load_template_paths(file_path):
-    """
-    Fetches template paths and returns dict mapping report type to template
-    """
-    # dict to be populated
-    templates = {
-        "si": "",
-        "pi": "",
-        "emc": "",
-        "thermal": "",
-    }
-
-    # Fetch paths from text file in same directory
-    with open(file_path, "r") as f:
-        for rep_type in templates:
-            # Iterate over each line prefixed with template key and = (e.g. "si=")
-            for line in f.readlines():
-                if line.startswith(rep_type):
-                    start = line.index("=")
-                    templates[rep_type] = line[start+1:] # Omit delimiter and copy remaining str into dict
-    
-    return templates
-
-
-def make_cover(conf_tools, report):
-    """
-    Sets first slide of report from args and user input
-    """
-    conf_tools.pptx.Slide(COVER_SLIDE).Copy() # Copy cover slide unto Clipboard
-    report.pptx.Slides.Paste(COVER_SLIDE) # Paste so as to make it the first slide in the report
-
-    # Grab the pasted cover slide
-    # and iterate over its shapes in order to replace their contents
-    cover = report.pptx.Slide(COVER_SLIDE)
-    for shape in cover.Shapes:
-        if shape.Name == TITLE_NAME:
-            shape.TextFrame.TextRange.Text = report.title[:]
-        elif shape.Name == DATE_NAME:
-            shape.TextFrame.TextRange.Text = __get_date()
-        elif shape.HasTable == MSOTRUE:
-            conf_creators = conf_tools.get_creators()
-            # Match table coordinates with creator keys and insert values of latter
-            for group, coords in TABLE_COORDS.items():
-                cover.Shapes.Table.Cell(coords[0], coords[1]).Shape.TextFrame.TextRange.Text = conf_creators[group][:]
-
-    print(f"Cover slide generated for {report.title}.")
-
-
-# def __get_title(report):
-#     """
-#     Returns user input title for a particular file
-#     """
-#     title = ""
-#     while True:
-#        title = input(f"Input title for {report}: ")
-#        if title:
-#            break
-
-#     return title
-
-
-# def __is_rep_type():
-#     """
-#     Returns a valid report type from user
-#     """
-#     sim_types = ["si", "pi", "emc", "thermal"] # Types of PCB simulation reports
-#     while True:
-#         rep_type = input("Input type of report (SI / PI / EMC / Thermal): " )
-#         # Verify user input
-#         if rep_type.lower() in sim_types:
-#             break
-
-#     return rep_type
-
-
-def __get_date():
-    """
-    Returns a user inputted date formatted into Japanese
-    """
-    date = ""
-    while True:
-        # Instructions for user input
-        prompt = """
-        Input report date as follows:
-
-        yyyy-MM-dd
-
-        where:
-        yyyy -> year
-        MM -> month
-        dd -> date
-        """
-        # Check if instructions were followed
-        try:
-            date = date.fromisoformat(input(prompt))
-            break
-        except: 
-            continue
-
-    return f"{date.strftime('%d %b. %Y')}" # Formats as e.g. 07 Feb. 2001, 15 Nov. 1753 etc.
-
-
-def copy_slides(conf_tools, report):
-    """
-    Copies over slides of interest 
-    from confirmation tools to report
-    """
-    toc = conf_tools.get_toc()
-    # Read each slide according to toc
-    for section in toc:
-        for slide_nums in toc[section]:
-            if section == "sim_targets": # Avoids copying pages listed in sim_targets 
-                continue
-            for slide_num in slide_nums:
-                # Copy current slide unto Clipboard
-                conf_tools.pptx.Slides(slide_num).Copy()
-                
-                # Paste slide on Clipboard into the same position if possible;
-                # otherwise, append to end
-                pos = slide_num if slide_num <= len(report.Slides) else ""
-                report.Slides.Paste(pos)
-
-    return report
-
-
-# def __copy_shapes(src_slide, src_index, dest_slide):
-#     """
-#     Iterates over source slide's shapes 
-#     and creates matching shapes in destination slide
-#     Returns None (mutates dest_slide)
-#     """
-#     curr = 1 # Shape pointer; starts at 1 to exclude title shape
-#     for shape in src_slide.shapes[TITLE_SHAPE+1:]:
-#         # Read position of original
-#         top = shape.top
-#         left = shape.left
-#         height = shape.height
-#         width = shape.width                    
-
-#         if shape.has_text_frame:
-#             # Add new textbox and add text thereto
-#             dest_slide.shapes.add_textbox(left, top, width, height)
-#             dest_slide.shapes[curr].text = shape.text[:]
-#             curr += 1
-
-#         elif shape.has_table:
-#             # Extract data from table
-#             table = shape.table
-#             cols = len(table.columns)
-#             rows = len(table.rows)
-#             cells = table.iter_cells() # Cell generator w/ text prop
-
-#             # Make table
-#             dest_slide.shapes.add_table(rows, cols, left, top, width, height)
-
-#             # Copy over contents from original to new table
-#             for cell in cells:
-#                 for new_cell in dest_slide.shapes[curr].table.iter_cells():
-#                     new_cell.text = cell.text[:]
-#             curr += 1
-
-#         else:
-#             # Likely a group shape
-#             try:
-#                 dest_slide.shapes.add_group_shape()
-#                 __copy_group_shape(shape, dest_slide.shapes[curr])
-#                 curr += 1
-
-#             except AttributeError: # In case not group shape
-#                 print(f"Unidentifiable shape found in slide {src_index}")
-
-
-# def __copy_group_shape(src_shape, dest_shape):
-#     """
-#     Iterates over source group shape
-#     and creates matching shapes in destination group shape
-#     Returns None (mutates dest_shape)
-#     """
-#     curr_sub = 0 # To track subshapes added to group shape
-#     img_cnt = 1 # To differentiate img filenames
-#     for shape in src_shape.shapes:
-#         # Get position and dimensions of subshape
-#         sub_left = shape.left
-#         sub_top = shape.top
-#         sub_width = shape.width
-#         sub_height = shape.height
-
-#         if shape.shape_type == 13: # PICTURE
-#             # Make temp folder to extract and save imgs as files
-#             blob = shape.image.blob
-#             if not "temp" in os.listdir("."):
-#                 os.mkdir("temp")
-#             filename = f"temp_img-{img_cnt}.png"
-#             img_path = os.path.join(os.getcwd(), "temp", filename)
-#             with open(img_path, "wb") as f:
-#                 f.write(blob)
-#             dest_shape.shapes.add_picture(filename, sub_left, sub_top,\
-#                                           sub_width, sub_height)
-#             img_cnt += 1
-
-#         elif shape.shape_type == 17: # TEXT_BOX
-#             dest_shape.shapes.add_textbox(sub_left, sub_top, sub_width, sub_height)
-#             dest_shape.shapes[curr_sub].text = shape.text
-        
-#         elif shape.shape_type == None: 
-#             # Assuming shape is Connector
-#             begin = shape.begin_x, shape.begin_y
-#             end = shape.end_x, shape.end_y
-#             # Default to Straight
-#             dest_shape.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, begin, end)
-#             dest_shape
-#         # Move to next shape
-#         curr_sub += 1
-
-#     # Cleanup temp folder made for images
-#     if "temp" in os.listdir("."):
-#         os.rmdir("temp")
-
-
-def save_report(report):
-    """
-    Gets filename from user and closes report after saving
-    """
-    filename = ""
-    path = ""
-    while True:
-        filename = input(f"Input filename to save the report {report.title}: ")
-        path = input("Input path to save report: ")
-        if filename and os.path.isabs(path):
-            break
-
-    report.pptx.SaveAs(os.path.join(path, filename))
-    report.pptx.Close()
-    print(f"{filename} saved in {path}.")
-
-
-# def make_TOU(report):
-#     """Generates Table of Updates"""
-#     pass
-
-
-# def make_TOC(report):
-#     """Generates Table of Contents"""
-#     pass
 
 
 # \\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -372,7 +66,7 @@ class Report():
     def title(self):
         raise NotImplementedError
 
-    def _get_table(self, shapes): # Made pseudo-private in order to improve method calls readability
+    def _get_table(self, shapes): 
         """
         Iterates over a Slide's collection of Shapes 
         and returns first shape found to have a Table object
@@ -380,9 +74,7 @@ class Report():
         for shape in shapes:
             if shape.HasTable == MSOTRUE:
                 return shape.Table
-
         return None 
-
 
 
 class ConfirmationTools(Report):
@@ -391,15 +83,17 @@ class ConfirmationTools(Report):
     """
     def __init__(self, pptx):
         super().__init__(pptx)
-        self.__proj_num = re.search(r"(^\w{2}\d{4})", self.title).group(1)[:] # Regex project number from title
+        # Regex project number from title
+        self.__proj_num = re.search(r"(^\w{2}\d{4})", self.title).group(1)[:] 
 
     @property
     def title(self):
         """
         Fetches title from cover slide
         """
+        # Pull title from cover slide
         return self.pptx.Slides(COVER_SLIDE).\
-               Shapes(TITLE_NAME).TextFrame.TextRange.Text[:] # Pull title from cover slide
+               Shapes(TITLE_NAME).TextFrame.TextRange.Text[:] 
 
     def get_creators(self):
         """
@@ -471,36 +165,10 @@ class ConfirmationTools(Report):
             # If single number
             else:
                 print(slide_nums)
-                toc_dict[section] = list(int(slide_nums) - 1) # Keep returned data structures consistent
+                # Keep returned data structures consistent by keeping values as list type
+                toc_dict[section] = toc_dict.get(section, list(int(slide_nums) - 1))
         
         return toc_dict
-
-    # def list_interfaces(self):
-    #     interfaces = []
-    #     toc = self.__toc.copy() # To avoid side effects
-    #     start = 0
-    #     end = 1
-
-    #     # Start and end indicies matched to self.table_of_contents
-    #     if len(toc["sim_targets"]) > 1:
-    #         start = toc["sim_targets"][0]
-    #         end += toc["sim_targets"][1]
-    #     else:
-    #         start = toc["sim_targets"]
-    #         end += start
-
-    #     for slide in self.pptx.slides[start:end]:
-    #         try:
-    #             title = slide.shapes[TITLE_SHAPE].lower()
-    #             match = re.search(r"condition\s?:\s?(\w+)\b", title)
-    #             # Interfaces are found in section 2 only
-    #             if match:
-    #                 interfaces.append(match.group(1)) # Save capture group (viz. interface)
-    #         except:
-    #             continue
-
-    #     # Remove duplicates
-    #     return set(interfaces)
 
 
 class SimulationReport(Report):
@@ -524,7 +192,6 @@ class SimulationReport(Report):
     # @abstractmethod
     # def __str__(self):
     #     return NotImplementedError
-
 
 
 class SIReport(SimulationReport):
@@ -609,128 +276,206 @@ class ThermalReport(SimulationReport):
         pass
 
 
-# # ==============
-# # Slide classes
-# # ==============
+# \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+# *** FUNCTION DEFINITIONS ****
+# //////////////////////////////
 
-# class Slide():
-#     """Base class for slide in report"""
-#     pass
+def _get_rep_type(conf_path):
+    """
+    Parses path for report type 
+    and verifies if report type is valid
+    """
+    # Get filename from path and search for report type
+    conf_fname = os.path.split(conf_path)[1] 
+    match = re.search(r"^\w{2}\d{4}.*_(\w{2,3})_", conf_fname)
+    if match:
+        rep_type = match.group(1).lower()
+
+        # Verify report type
+        if rep_type not in SimulationReport.report_types():
+            print(f"ERROR: FILENAME '{conf_fname}' or PATH '{conf_path}' is not valid")
+            sys.exit(-1)
+
+    return rep_type
 
 
-# class CoverSlide(Slide):
-#     """Class for first slide of report"""
-#     pass
+def fetch_interfaces(dir_path):
+    """
+    Crawls simulation directory to fetch names of interfaces
+    """
+    if not os.path.isabs(dir_path) or \
+        os.path.split(dir_path)[1] != "Simulation":
+        print("ERROR: Simulation folder could not be found.")
+        sys.exit(-1)
+
+    return os.listdir(dir_path)
 
 
-# class DividerSlide(Slide):
-#     """Class for slide dividing sections of report"""
-#     pass
+def _load_template_paths(file_path):
+    """
+    Fetches template paths and returns dict mapping report type to template
+    """
+    # dict to be populated
+    templates = {
+        "si": "",
+        "pi": "",
+        "emc": "",
+        "thermal": "",
+    }
 
-
-
-# # ========================
-# # SlideContent Base Class
-# # ========================
-
-# class SlideContent():
-#     """Base class for images, textboxes, tables, etc. on slides"""
-#     def __init__(self, wh, hasBorder, xy):
-#         self.__dimensions = wh # tuple
-#         self.__hasBorder = hasBorder
-#         self.__position = xy # tuple
-#         self.__border = {
-#             "type": "",
-#             "thickness": 0,
-#             "style": "",
-#             "color": ""
-#         }
+    # Fetch paths from text file in same directory
+    with open(file_path, "r") as f:
+        for rep_type in templates:
+            # Iterate over each line prefixed with template key and = (e.g. "si=")
+            for line in f.readlines():
+                if line.startswith(rep_type):
+                    start = line.index("=")
+                    # Omit delimiter and copy remaining str into dict
+                    templates[rep_type] = line[start+1:] 
     
-#     def set_border(self):
-#         raise NotImplementedError
+    return templates
 
 
-# # ==============
-# # Image classes
-# # ==============
+def init_reports(rep_type, conf_tools, interfaces=[]):
+    """
+    Initializes and returns Report based on user input and template
+    """
+    templates = _load_template_paths(TXT_PATH)
+    reports = None
+    proj_num = conf_tools.proj_num[:]
 
-# class Image(SlideContent):
-#     """Base class for images on report"""
-#     pass
+    # Instantiate report based on user input
+    if rep_type == "si" and interfaces:
+        reports = [ SIReport(templates[rep_type], interface, proj_num) for interface in interfaces ]
+    elif rep_type == "pi":
+        reports = PIReport(templates[rep_type], proj_num)
+    elif rep_type == "emc":
+        reports = EMCReport(templates[rep_type], proj_num)
+    else:
+        reports = ThermalReport(templates[rep_type], proj_num)
 
-# class TopologyImage(Image):
-#     """Topology diagram"""
-#     pass
+    # Ensure returned object is of consistent data structure
+    if not isinstance(reports, list):
+        reports = list(reports)
 
-
-# class WaveForm(Image):
-#     """Waveform images for SI reports"""
-#     pass
-
-
-# # ==============
-# # TextBox classes
-# # ==============
-
-# class TextBox(SlideContent):
-#     """Base class for labels on slides"""
-#     def __init__(self, ff, color, bg_color, size, hasBorder, position):
-#         super().__init__(size, hasBorder, position)
-#         self.__font_family = ff
-#         self.__font_color = color
-#         self.__bg_color = bg_color
-    
-    
-# class Title(TextBox):
-#     pass 
+    return reports
 
 
-# class Subtitle(Title):
-#     pass
+def _get_date():
+    """
+    Receives isoformat date from user 
+    and returns the date formatted according to report standards
+    """
+    date_str = ""
+    while True:
+        # Instructions for user input
+        prompt = """
+        Input report date as follows:
+
+        yyyy-MM-dd
+
+        where:
+        yyyy -> year
+        MM -> month
+        dd -> date
+        """
+        # Check if instructions were followed
+        try:
+            date_str = date.fromisoformat(input(prompt))
+            break
+        except ValueError: 
+            continue
+
+    # Formats as e.g. 07 Feb. 2001, 15 Nov. 1753 etc.
+    return f"{date_str.strftime('%d %b. %Y')}" 
 
 
-# class Label(TextBox):
-#     """All labels besides (sub)titles"""
-#     def __init__(self, color):
-#         super().__init__(color)
+def make_cover(conf_tools, report):
+    """
+    Sets first slide of report from args and user input
+    """
+    # Copy cover slide unto Clipboard
+    # and paste so as to make it the first slide in the report
+    conf_tools.pptx.Slide(COVER_SLIDE).Copy() 
+    report.pptx.Slides.Paste(COVER_SLIDE) 
 
-# class Comment(TextBox):
-#    pass 
+    # Grab the pasted cover slide
+    # and iterate over its shapes in order to replace their contents
+    cover = report.pptx.Slide(COVER_SLIDE)
+    for shape in cover.Shapes:
+        if shape.Name == TITLE_NAME:
+            shape.TextFrame.TextRange.Text = report.title[:]
+        elif shape.Name == DATE_NAME:
+            shape.TextFrame.TextRange.Text = _get_date()
+        elif shape.HasTable == MSOTRUE:
+            conf_creators = conf_tools.get_creators()
+            # Match table coordinates with creator keys and insert values of latter
+            for group, coords in TABLE_COORDS.items():
+                cover.Shapes.Table.Cell(coords[0], coords[1]).Shape.TextFrame.TextRange.Text = conf_creators[group][:]
 
-
-# # ==============
-# # TextBox classes
-# # ==============
-
-# class Table(SlideContent):
-#     """Base class for tables on report slides"""
-#     def __init__(self, w, h):
-#         self.__num_rows = h
-#         self.__num_cols = w
-
-
-# class Subtable(Table):
-#     def __init__(self, w, h):
-#         super().__init__(w, h)    
-
-
-# class CellCollection():
-#     def __init__(self, colors):
-#         self.__cell_color = colors[0]
-#         self.__font_color = colors[1]
-
-# class Column(CellCollection):
-#     def __init__(self, colors):
-#         super().__init__(colors)
+    print(f"Cover slide generated for {report.title}.")
 
 
-# class Row(CellCollection):
-#     def __init__(self, colors):
-#         super().__init__(colors)
+def copy_slides(conf_tools, report):
+    """
+    Copies over slides of interest 
+    from confirmation tools to report
+    """
+    toc = conf_tools.get_toc()
+    # Read each slide according to toc
+    for section in toc:
+        for slide_nums in toc[section]:
+            # Avoids copying pages listed in sim_targets 
+            if section == "sim_targets": 
+                continue
+            for slide_num in slide_nums:
+                # Copy current slide unto Clipboard
+                conf_tools.pptx.Slides(slide_num).Copy()
+                
+                # Paste slide into the same position of report if possible;
+                # otherwise, append to end
+                pos = slide_num if slide_num <= len(report.Slides) else ""
+                report.Slides.Paste(pos)
 
 
-# class Header(Row):
-#     pass
+def save_report(report):
+    """
+    Gets filename from user and closes report after saving
+    """
+    filename = ""
+    path = ""
+    while True:
+        filename = input(f"Input filename to save the report {report.title}: ")
+        path = input("Input path to save report: ") # TODO: develop algorithm to fix name
+        if filename and os.path.isabs(path):
+            break
+
+    report.pptx.SaveAs(os.path.join(path, filename))
+    report.pptx.Close()
+    print(f"{filename} saved in {path}.")
+
+
+
+def weave_reports(rep_type, conf_path, interfaces=[]):
+    """
+    Generate reports based on input confirmation tools and indicated type
+    """
+    # Start PowerPoint process
+    PowerPoint = win32.gencache.EnsureDispatch("PowerPoint.Application") 
+    # Make ConfirmationTools instance (not visible) 
+    ct = ConfirmationTools(PowerPoint.Presentations.Open(conf_path, WithWindow=False)) 
+
+    # Initialize reports,
+    # then make a cover slide, copy/paste relevant slides, 
+    # and save for each report
+    reports = init_reports(rep_type, ct, interfaces) 
+    for rep in reports:
+        make_cover(ct, rep)
+        copy_slides(ct, rep)
+        save_report(rep)
+
+    ct.pptx.Close() # Close, to avoid file corruption, w/o saving
+    PowerPoint.Quit() # Quit PowerPoint process
 
 
 if __name__ == "__main__":
@@ -747,9 +492,10 @@ if __name__ == "__main__":
             For more information refer to the README.
            """
     parser = argparse.ArgumentParser(description=desc)
+
     # Positional args
     parser.add_argument("conf_tools", help="Path to confirmation tools for simulation reports")
-    parser.add_argument("report_type", help="Type of report (SI / PI / EMC / Thermal)")
+
     # Optional args
     parser.add_argument("-s", "--simulation_dir", nargs=1, help="Path to simulation directory") 
     parser.add_argument("-i", "--image_dir", nargs=1, help="Path to directory of images to be included in the report(s)")
@@ -759,12 +505,11 @@ if __name__ == "__main__":
 
     # Process input from positional args    
     conf_path = args.conf_tools 
-    rep_type = args.report_type.lower()
-    # Verify report type
-    if rep_type not in SimulationReport.report_types():
-        print("ERROR: Report type is invalid")
-        sys.exit(-1)
-    
+
+    # Get filename of confirmation report and grab report type 
+    # TODO: Keep the directory for navigating and fetching other files
+    rep_type = _get_rep_type(conf_path)
+
     # Process input from optional args
     img_dir = args.image_dir # TODO: Conditional logic for image_dir opt
     sim_dir = args.simulation_dir
@@ -776,4 +521,7 @@ if __name__ == "__main__":
     
     # Close program
     sleep(1)
-    input("Press any key to quit.\n")
+    _ = input("Press any key to quit.\n")
+
+    # Success
+    sys.exit(0)

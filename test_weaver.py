@@ -3,7 +3,6 @@ import pytest
 import os
 import win32com.client as win32
 
-from weaver import ConfirmationTools
 
 """ 
 The following tests follow the four-phase
@@ -11,22 +10,21 @@ The following tests follow the four-phase
 approach described by Gerard Meszaros 
 in "xUnit test patterns: Refactoring test code" (2007).
 
-Areas where (4) is left blank assumes Python's garbage collector
-to be at work in freeing memory.
+Global (module) scope setups and teardowns, however,
+are conducted using pytest fixtures.
 """
 
 # \\\\\\\\\\\\\\\\\\\\\\
-#  HELPER FUNCTION TESTS
+#  FIXTURE DEFINITIONS
 # //////////////////////
 
-PowerPoint = win32.gencache.EnsureDispatch("PowerPoint.Application")
-Presentations = PowerPoint.Presentations
-
-def set_test_params(path):
+@pytest.fixture(scope="module")
+def params():
     """
     Returns dict of test parameters extracted from textfile
     """
-
+    # (1) Setup
+    path = os.getenv("PARAMS_PATH")
     params = {
         "sim_dir": "",
         "si_path": "",
@@ -36,22 +34,78 @@ def set_test_params(path):
 
     with open(path, "r") as f:
         for line in f.readlines():
-            param_name, param_val = line.split("=")
-            for k in params.keys():
-                if param_name == k:
-                    params[k] = param_val.rstrip()
+            param_name, param_val = line.split("=") 
+            params[param_name] = param_val.rstrip() # Remove newlines
     
     return params
 
 
-PARAMS = set_test_params(os.getenv("PARAMS_PATH"))
+@pytest.fixture(scope="module")
+def ppt():
+    """
+    Returns PowerPoint singleton
+    """
+    # (1) Setup
+    PowerPoint = win32.gencache.EnsureDispatch("PowerPoint.Application")
+    yield PowerPoint
+
+    # (4) Teardown
+    PowerPoint.Quit()
 
 
-def test_fetch_interfaces():
+@pytest.fixture(scope="module")
+def conf_tools(ppt, params):
+    """
+    Returns ConfirmationTools singleton
+    """
+    # (1) Setup
+    conf_tools = weaver.ConfirmationTools(ppt.Presentations.Open(params["conf_path"], WithWindow=False)) 
+    yield conf_tools 
+
+    # (4) Teardown
+    conf_tools.pptx.Close()
+
+
+@pytest.fixture(params=["1997-02-25", "1997-02-28", "2012-12-07"])
+def mock_date(monkeypatch, request):
+    """
+    Monkeypatches builtins.input 
+    in order to test `_get_date`
+    """
+    # (1) Setup
+    def mock_input(prompt):
+        return request.param
+
+    monkeypatch.setattr("builtins.input", mock_input)
+    yield
+
+    # (4) Teardown
+    # Revert builtins.input back to normal   
+    monkeypatch.undo() 
+
+
+# \\\\\\\\\\\\\\\\\\\\\\
+#  FUNCTIONS
+# //////////////////////
+
+def test_get_rep_type(params):
 
     # (1) Setup
-    print(PARAMS)
-    sim_dir = PARAMS["sim_dir"] 
+    expected_type = "si"
+
+    # (2) Execution
+    actual_type = weaver._get_rep_type(params["conf_path"])
+
+    # (3) Verify
+    assert actual_type == expected_type
+
+    # (4) Teardown
+
+
+def test_fetch_interfaces(params):
+
+    # (1) Setup
+    sim_dir = params["sim_dir"] 
     expected_if_list = ["RGMII"]
 
     # (2) Execute
@@ -64,10 +118,10 @@ def test_fetch_interfaces():
     # (4) Teardown
     
 
-def test_load_template_paths():
+def test_load_template_paths(params):
 
     # (1) Setup
-    expected_si_path = PARAMS["si_path"]
+    expected_si_path = params["si_path"]
     expected_num_temps = 4
 
     # (2) Execute
@@ -86,23 +140,59 @@ def test_load_template_paths():
     # (4) Teardown
 
 
-# \\\\\\\\\\\\\\\\\\\\\\
-#  CLASS INSTANCE TESTS
-# //////////////////////
+def test_get_date(mock_date):
 
-# Global instance of ConfirmationTools
-test_ct = ConfirmationTools(Presentations.Open(PARAMS["conf_path"], WithWindow=False))
-
-def test_get_creators():
-    
     # (1) Setup
-    expected_reviewers = PARAMS["reviewers"]
+    expected_dates = [ "25 Feb. 1997", "28 Feb. 1997", "07 Dec. 2012" ]
 
     # (2) Execute
-    actual_creators = test_ct.get_creators()
+    actual_date = weaver._get_date()
 
     # (3) Verify
+    assert actual_date in expected_dates
+
+    # (4) Teardown
+
+
+def test_init_reports(conf_tools):
+
+    # (1) Setup
+    rep_type = "si"
+    interfaces = ["RGMII"]
+    rep_str = f"{rep_type.upper()} Report for {interfaces[0]}"
+
+    # (2) Execute
+    reports = weaver.init_reports(rep_type, conf_tools, interfaces)
+    test_rep = reports[0]
+
+    # (3) Verify
+    assert len(reports) == 1
+    assert test_rep.report_type[:].lower() == rep_type
+    assert test_rep.pptx # Check if Presentation obj created
+    assert str(test_rep) == rep_str
+
+    # (4) Teardown
+
+
+# \\\\\\\\\\\\\\\\\\\\\\
+#  CLASS METHODS
+# //////////////////////
+
+def test_get_creators(conf_tools, params):
+    
+    # (1) Setup
+    expected_reviewers = params["reviewers"]
+    
+    # (2) Execute
+    actual_creators = conf_tools.get_creators()
+
+    # (3) Verify
+    # Despite key names, all dict values returned
+    # by conf_tools.get_creators() should be strings. 
+    # This is true even when multiple persons are involved, 
+    # as all names are separated by commas 
     assert isinstance(actual_creators, dict)
+    assert isinstance(actual_creators["preparers"], str)
     assert actual_creators["reviewers"] == expected_reviewers
     assert not actual_creators["preparers"] == expected_reviewers
     assert actual_creators["preparers"].find(",") > -1
@@ -110,13 +200,13 @@ def test_get_creators():
     # (4) Teardown
 
 
-def test_get_toc():
+def test_get_toc(conf_tools):
 
     # (1) Setup
     # None
 
     # (2) Execute
-    actual_toc = test_ct.get_toc()
+    actual_toc = conf_tools.get_toc()
 
     # (3) Verify
     assert len(actual_toc.keys()) == 3
@@ -129,21 +219,20 @@ def test_get_toc():
     # (4) Teardown
 
 
-def test_init_reports():
+def test_get_table(conf_tools):
 
     # (1) Setup
-    rep_type = "si"
-    interfaces = ["RGMII"]
-    rep_str = f"{rep_type.upper()} Report for {interfaces[0]}"
+    # As per the C++ MsoTriState Enum
+    # Refer to https://docs.microsoft.com/en-us/dotnet/api/microsoft.office.core.msotristate?view=office-pia 
+    msoTrue = -1
+    cover_slide = conf_tools.pptx.Slides(weaver.COVER_SLIDE)
 
     # (2) Execute
-    reports = weaver.init_reports(rep_type, test_ct, interfaces)
-    test_rep = reports[0]
+    table = conf_tools._get_table(cover_slide.Shapes)
 
     # (3) Verify
-    assert len(reports) == 1
-    assert test_rep.report_type[:].lower() == rep_type
-    assert test_rep.pptx # Check if Presentation obj created
-    assert str(test_rep) == rep_str
+    # Check parent element of grabbed table
+    assert not table == None
+    assert table.Parent.HasTable == msoTrue
 
     # (4) Teardown
