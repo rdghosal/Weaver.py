@@ -1,7 +1,10 @@
-import weaver
 import pytest
 import os
 import win32com.client as win32
+
+from .weaver import _get_date, _load_template_paths, _get_rep_type, fetch_interfaces, init_reports
+from .rep_types import ConfirmationTools, SimulationReport
+from .consts import TXT_PATH, COVER_SLIDE 
 
 
 """ 
@@ -13,6 +16,7 @@ in "xUnit test patterns: Refactoring test code" (2007).
 Global (module) scope setups and teardowns, however,
 are conducted using pytest fixtures.
 """
+
 
 # \\\\\\\\\\\\\\\\\\\\\\
 #  FIXTURE DEFINITIONS
@@ -59,7 +63,7 @@ def conf_tools(ppt, params):
     Returns ConfirmationTools singleton
     """
     # (1) Setup
-    conf_tools = weaver.ConfirmationTools(ppt.Presentations.Open(params["conf_path"], WithWindow=False)) 
+    conf_tools = ConfirmationTools(ppt.Presentations.Open(params["conf_path"], WithWindow=False)) 
     yield conf_tools 
 
     # (4) Teardown
@@ -94,7 +98,7 @@ def test_get_rep_type(params):
     expected_type = "si"
 
     # (2) Execution
-    actual_type = weaver._get_rep_type(params["conf_path"])
+    actual_type = _get_rep_type(params["conf_path"])
 
     # (3) Verify
     assert actual_type == expected_type
@@ -109,13 +113,14 @@ def test_fetch_interfaces(params):
     expected_if_list = ["RGMII"]
 
     # (2) Execute
-    actual_if_list = weaver.fetch_interfaces(sim_dir)
+    actual_if_list = fetch_interfaces(sim_dir)
 
     # (3) Verify
     assert isinstance(actual_if_list, list)
     assert actual_if_list == expected_if_list 
 
     # (4) Teardown
+    
     
 
 def test_load_template_paths(params):
@@ -125,7 +130,7 @@ def test_load_template_paths(params):
     expected_num_temps = 4
 
     # (2) Execute
-    actual_templates = weaver._load_template_paths(weaver.TXT_PATH)
+    actual_templates = _load_template_paths(TXT_PATH)
 
     # (3) Verify
     assert isinstance(actual_templates, dict)
@@ -146,7 +151,7 @@ def test_get_date(mock_date):
     expected_dates = [ "25 Feb. 1997", "28 Feb. 1997", "07 Dec. 2012" ]
 
     # (2) Execute
-    actual_date = weaver._get_date()
+    actual_date = _get_date()
 
     # (3) Verify
     assert actual_date in expected_dates
@@ -162,7 +167,7 @@ def test_init_reports(conf_tools):
     rep_str = f"{rep_type.upper()} Report for {interfaces[0]}"
 
     # (2) Execute
-    reports = weaver.init_reports(rep_type, conf_tools, interfaces)
+    reports = init_reports(rep_type, conf_tools, interfaces)
     test_rep = reports[0]
 
     # (3) Verify
@@ -225,7 +230,7 @@ def test_get_table(conf_tools):
     # As per the C++ MsoTriState Enum
     # Refer to https://docs.microsoft.com/en-us/dotnet/api/microsoft.office.core.msotristate?view=office-pia 
     msoTrue = -1
-    cover_slide = conf_tools.pptx.Slides(weaver.COVER_SLIDE)
+    cover_slide = conf_tools.pptx.Slides(COVER_SLIDE)
 
     # (2) Execute
     table = conf_tools._get_table(cover_slide.Shapes)
