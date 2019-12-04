@@ -11,6 +11,7 @@ class EMCReport(SimulationReport):
         super().__init__(template, proj_num)
         self.__power_nets = []
         self.__curr_slide = 1 # To store state of slide making
+        # TODO: implement a toc prop for random access
 
     def __str__(self):
         pass
@@ -26,6 +27,11 @@ class EMCReport(SimulationReport):
     @property
     def power_nets(self):
         return self.__power_nets[:]
+
+    def _update_toc(self):
+        """Updates table of contents after appending slides to a section"""
+        # TODO
+        pass
     
     def _get_power_nets(self, toc, conf_tools):
         """Reads table of contents (TOC) for pages that need making"""
@@ -72,7 +78,13 @@ class EMCReport(SimulationReport):
 
         row = 2 # init row
         count = 0
-        item_num = 1 
+        item_num = 1
+
+        # Make sure table has same number of rows as power nets,
+        # excluding the header and accounting for two rows per power net
+        while len(table.Rows) - 1 < len(self.power_nets) * 2:
+            table.Rows.Add()
+
         while True:
             try:
                 if count % 2 != 0:
@@ -113,12 +125,47 @@ class EMCReport(SimulationReport):
             # Move to next power net        
             count += 1
 
+        # Move pointer to the last slide
+        self.__curr_slide += count
+
+    def _add_appendix(self):
+        """Adds appendix slides according to the power net list"""
+        # Move to first slide of appendix
+        self.pptx.__curr_slide += 2
+        start = self.pptx.__curr_slide
+        p_nets = self.power_nets
+
+        self.pptx.Slides(start).Copy()
+
+        # start from 1 to account for init template slide
+        for i in range(1, len(p_nets) - 1):
+            index = start + i
+            self.pptx.Slides.Paste(index)
+        
+        # Move pointer at start of section to end
+        for j in range(0, len(p_nets) - 1):
+            start += j
+            shapes = self.pptx.Slides(start).Shapes
+            for s in shapes:
+                if s.HasTextFrame == MSOTRUE:
+                    text = s.TextFrame.TextRange.Text[:]
+                    if text.startswith("Appendix"):
+                        new = text.replace("<i>", str(j + 1))
+                        new.replace("<POWER_NET[i]>", p_nets[j])
+                        s.TextFrame.TextRange.Text = new
+                elif s.HasTable == MSOTRUE:
+                    text_range = s.Table.Cell(2,2).Shape.TextFrame
+                    text = text_range.Text[:]
+                    new = text.replace("<POWER_NET[i]>", p_nets[j])
+                    text_range.Text = new
 
 
-            count += 1
 
-        # Move pointer to the next slide 
-        self.__curr_slide += count + 1 
+                        
+        
+        
+
+        
 
 
 
