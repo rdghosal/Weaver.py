@@ -18,5 +18,6 @@ TOC = 3
 
 # Values to verify shape identity
 MSOTRUE = -1
-TITLE_NAME = "Rectangle 26"
+TITLE_NAME = "Rectangle 26" 
+REP_SLIDE_TITLE = "Title 6" # TODO: make consistent between slides
 DATE_NAME = u"テキスト プレースホルダー 10"

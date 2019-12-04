@@ -19,6 +19,9 @@ class SimulationReport(Report):
     def report_type(self):
         raise NotImplementedError 
 
+    def read_toc(self):
+        raise NotImplementedError
+
     # @abstractmethod
     # def __str__(self):
     #     return NotImplementedError

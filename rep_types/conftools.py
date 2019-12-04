@@ -82,16 +82,16 @@ class ConfirmationTools(Report):
             # In case of hyphen type -
             if slide_nums.find("-") > -1:
                 slide_nums = slide_nums.split("-")
-                toc_dict[section] = [ int(num) - 1 for num in slide_nums ]
+                toc_dict[section] = [ int(num) for num in slide_nums ]
             # In case of hyphen type ―    
             elif slide_nums.find("\u2013") > -1:
                 slide_nums = slide_nums.split("\u2013") 
-                toc_dict[section] = [ int(num) - 1 for num in slide_nums ]
+                toc_dict[section] = [ int(num) for num in slide_nums ]
             # If single number
             else:
                 print(slide_nums)
                 # Keep returned data structures consistent by keeping values as list type
-                toc_dict[section] = toc_dict.get(section, list(int(slide_nums) - 1))
+                toc_dict[section] = toc_dict.get(section, list(int(slide_nums)))
         
         return toc_dict
 

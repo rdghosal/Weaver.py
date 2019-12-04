@@ -5,6 +5,7 @@ SIM_TARGET = 6
 SIM_TARGET_REP = 7
 DC_DROP = 13
 AC_DROP = 14
+IMPEDANCE = 15
 
 class PIReport(SimulationReport):
     """
@@ -65,9 +66,7 @@ class PIReport(SimulationReport):
             self.pptx.Slides.Paste(i + 1) # Offset by one
 
     def _read_power_nets(self):
-
         power_nets = []
-
         slide = self.pptx.Slides(SIM_TARGET_REP)
         table = self._get_table(slide.shapes)
 
@@ -99,20 +98,40 @@ class PIReport(SimulationReport):
     
         self.power_nets = power_nets[:]
 
-    def fill_ac_dc_drop(self, ac_drop=False):
+    def fill_analysis_table(self, type_):
+        if type_ not in ["ac", "dc", "imp"]:
+            print("The targeted analysis type is invalid")
+            raise AnalysisTypeError
+
         p_nets = self.power_nets
-        drop_type = "ac drop analysis" if ac_drop else "dc drop analysis"
+
+        index = None # To be used later for finding target slide
+        anal_type = ""
+
+        if type_ == "ac":
+            index = AC_DROP
+            anal_type = "ac drop analysis"
+        elif type_ == "dc":
+            index = DC_DROP
+            anal_type = "dc drop analysis"
+        else:
+            index = IMPEDANCE
+            anal_type = "impedance analysis"
+
         target_nets = []
 
         item_num = 1
         for n in p_nets:
-            if n[drop_type][0]:
+            if n[anal_type][0]:
                 reference = n["reference ic"][:]
                 # Change in case load is set to "all"
-                if ac_drop:
+                if type_ == "ac":
                     if n["reference ic"].lower().find("all load ic"):
                         reference = reference.split("~")[0]
                         reference += n["ac drop analysis"][1][:]
+                elif type_ == "imp":
+                    reference = reference.split("~")[0]
+                    reference += n["impedance analysis"][1][:]
                 # Info to be filled into table
                 net_info = {
                     "no.": item_num,
@@ -123,25 +142,34 @@ class PIReport(SimulationReport):
                 target_nets.append(net_info)
                 item_num += 1
         
-        index = AC_DROP if ac_drop else DC_DROP
         slide = self.pptx.Slides(index)
         table = self._get_table(slide.Shapes)
 
         while len(table.Rows) < len(target_nets):
             table.Rows.Add()
         
+        num_cols = 3 if type_ == "imp" else 4
         for i in range(len(target_nets)):
             # Only iterating first four columns
-            for j in range(4):
+            for j in range(num_cols):
                 col = j + 1
                 row = i + 2 if col <= 1 else i + 3
                 header = 1 if col <= 1 else 2 # To accomodate different header sizes
-                col_name = table.Cell(header, col).Shape.TextFrame.TextRange.Text[:]
+                col_name = table.Cell(header, col).Shape.TextFrame.TextRange.Text[:].lower()
+                # To ensure consistency with net_info dict
+                # if analysis type is impedance
+                if type_ == "imp":
+                    if col_name == "simulation target":
+                        col_name = "power net"
+                    elif col_name == "simulation portion":
+                        col_name = "reference ic"
+                    elif col_name == "item":
+                        col_name = "no."
                 table.Cell(row, col).Shape.TextFrame.TextRange.Text = target_nets[i][col_name][:]
         
 
-
-
+class AnalysisTypeError(Exception):
+    pass
 
 
 

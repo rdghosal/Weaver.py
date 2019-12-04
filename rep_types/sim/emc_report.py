@@ -46,6 +46,7 @@ class EMCReport(SimulationReport):
             slide_title = self.pptx.Slides(curr_slide).Shapes(TITLE_NAME).TextFrame.TextRange.Text[:]
             slide_title = slide_title.replace("3.1", "")
             self.pptx.Slides(curr_slide).Shapes(TITLE_NAME).TextFrame.TextRange.Text = slide_title[:]
+            count += 1
 
         sim_tar_table = self._get_table(self.pptx.Slides(SIM_TARGETS).Shapes)
         row = 2 # Initial row for scan
