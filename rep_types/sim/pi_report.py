@@ -3,6 +3,7 @@ import re
 
 SIM_TARGET = 6
 SIM_TARGET_REP = 7
+DC_DROP = 13
 AC_DROP = 14
 
 class PIReport(SimulationReport):
@@ -98,36 +99,47 @@ class PIReport(SimulationReport):
     
         self.power_nets = power_nets[:]
 
-    def fill_ac_drop(self):
+    def fill_ac_dc_drop(self, ac_drop=False):
         p_nets = self.power_nets
-        ac_nets = []
+        drop_type = "ac drop analysis" if ac_drop else "dc drop analysis"
+        target_nets = []
 
         item_num = 1
         for n in p_nets:
-            if n["ac drop analysis"][0]:
+            if n[drop_type][0]:
+                reference = n["reference ic"][:]
+                # Change in case load is set to "all"
+                if ac_drop:
+                    if n["reference ic"].lower().find("all load ic"):
+                        reference = reference.split("~")[0]
+                        reference += n["ac drop analysis"][1][:]
+                # Info to be filled into table
                 net_info = {
-                    "no.": item_num
+                    "no.": item_num,
                     "power net": n["power net"],
-                    "reference ic": n["reference ic"],
+                    "reference ic": reference,
                     "source voltage": n["voltage"]
                 }
-            ac_nets.append(net_info)
+                target_nets.append(net_info)
+                item_num += 1
         
-        slide = self.pptx.Slides(AC_DROP)
+        index = AC_DROP if ac_drop else DC_DROP
+        slide = self.pptx.Slides(index)
         table = self._get_table(slide.Shapes)
 
-        while len(table.Rows) < len(ac_nets):
+        while len(table.Rows) < len(target_nets):
             table.Rows.Add()
         
-        for i in range(len(ac_nets)):
+        for i in range(len(target_nets)):
             # Only iterating first four columns
             for j in range(4):
                 col = j + 1
                 row = i + 2 if col <= 1 else i + 3
-                header = 1 if col <= 1 else 2
+                header = 1 if col <= 1 else 2 # To accomodate different header sizes
                 col_name = table.Cell(header, col).Shape.TextFrame.TextRange.Text[:]
-                table.Cell(row, col).Shape.TextFrame.TextRange.Text = ac_nets[i][col_name][:]
+                table.Cell(row, col).Shape.TextFrame.TextRange.Text = target_nets[i][col_name][:]
         
+
 
 
 
