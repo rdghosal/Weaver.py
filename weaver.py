@@ -2,7 +2,7 @@ import os, sys, re
 import win32com.client as win32
 
 # from time import sleep
-from abc import ABC, abstractmethod
+# from abc import ABC, abstractmethod
 from datetime import date
 from .consts import *
 from .rep_types import ConfirmationTools, SimulationReport
@@ -69,7 +69,7 @@ def _load_template_paths(file_path):
     return templates
 
 
-def init_reports(rep_type, conf_tools, interfaces=[]):
+def init_reports(rep_type, conf_tools):
     """
     Initializes and returns Report based on user input and template
     """
@@ -78,8 +78,8 @@ def init_reports(rep_type, conf_tools, interfaces=[]):
     proj_num = conf_tools.proj_num[:]
 
     # Instantiate report based on user input
-    if rep_type == "si" and interfaces:
-        reports = [ SIReport(templates[rep_type], interface, proj_num) for interface in interfaces ]
+    if rep_type == "si":
+        reports = [ SIReport(templates[rep_type], interface, proj_num) for interface in conf_tools.get_interfaces() ]
     elif rep_type == "pi":
         reports = PIReport(templates[rep_type], proj_num)
     elif rep_type == "emc":
@@ -188,8 +188,7 @@ def save_report(report):
     print(f"{filename} saved in {path}.")
 
 
-
-def weave_reports(rep_type, conf_path, interfaces=[]):
+def weave_reports(rep_type, conf_path):
     """
     Generate reports based on input confirmation tools and indicated type
     """
@@ -201,7 +200,7 @@ def weave_reports(rep_type, conf_path, interfaces=[]):
     # Initialize reports,
     # then make a cover slide, copy/paste relevant slides, 
     # and save for each report
-    reports = init_reports(rep_type, ct, interfaces) 
+    reports = init_reports(rep_type, ct) 
     for rep in reports:
         make_cover(ct, rep)
         copy_slides(ct, rep)
