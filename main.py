@@ -24,7 +24,7 @@ def main(args):
     interfaces = fetch_interfaces(args.simulation_dir) if sim_dir else []
 
     # Make reports based on inputs and print confirmation
-    weave_reports(rep_type, conf_path, interfaces)
+    weave_reports(rep_type, conf_path)
     print(f"Weaving of report(s) for simulation type {rep_type.upper()} complete.\n")
     
     # Close program

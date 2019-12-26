@@ -167,7 +167,7 @@ def test_init_reports(conf_tools):
     rep_str = f"{rep_type.upper()} Report for {interfaces[0]}"
 
     # (2) Execute
-    reports = init_reports(rep_type, conf_tools, interfaces)
+    reports = init_reports(rep_type, conf_tools)
     test_rep = reports[0]
 
     # (3) Verify
