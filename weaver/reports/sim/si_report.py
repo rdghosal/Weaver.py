@@ -23,3 +23,9 @@ class SIReport(SimulationReport):
     @property
     def interface(self):
         return self.__interface
+
+    def copy_from_conf(self, conf_tools):
+        pass
+    
+    def clone_temp_slides(self):
+        pass

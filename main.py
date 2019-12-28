@@ -2,7 +2,7 @@
 import argparse, sys
 
 from time import sleep
-from .weaver import weave_reports, _get_rep_type, fetch_interfaces # TODO: Move _get_rep_type, fetch_interfaces
+from weaver import weave_reports, fetch_interfaces # TODO: Move _get_rep_type, fetch_interfaces
 
 
 def main(args):
@@ -20,12 +20,12 @@ def main(args):
 
     # Get filename of confirmation report and grab report type 
     # TODO: Keep the directory for navigating and fetching other files
-    rep_type = _get_rep_type(conf_path)
+    # rep_type = _get_rep_type(conf_path)
     interfaces = fetch_interfaces(args.simulation_dir) if sim_dir else []
 
     # Make reports based on inputs and print confirmation
-    weave_reports(rep_type, conf_path)
-    print(f"Weaving of report(s) for simulation type {rep_type.upper()} complete.\n")
+    weave_reports(conf_path)
+    # print(f"Weaving of report(s) for simulation type {} complete.\n")
     
     # Close program
     sleep(1)

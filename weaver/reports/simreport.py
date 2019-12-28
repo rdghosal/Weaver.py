@@ -22,6 +22,9 @@ class SimulationReport(Report):
     def read_toc(self):
         raise NotImplementedError
 
+    def copy_from_conf(self, conf_tools):
+        pass
+
     # @abstractmethod
     # def __str__(self):
     #     return NotImplementedError

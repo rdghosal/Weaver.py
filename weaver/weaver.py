@@ -1,35 +1,17 @@
-import os, sys, re
+import os, sys
 import win32com.client as win32
 
 # from time import sleep
 # from abc import ABC, abstractmethod
 from datetime import date
-from .consts import *
-from .rep_types import ConfirmationTools, SimulationReport
-from .rep_types.sim import SIReport, PIReport, EMCReport, ThermalReport
+from .util import *
+from .reports import ConfirmationTools, SimulationReport
+from .reports.sim import SIReport, PIReport, EMCReport
 
 
 # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 # *** FUNCTION DEFINITIONS ****
 # //////////////////////////////
-
-def _get_rep_type(conf_path):
-    """
-    Parses path for report type 
-    and verifies if report type is valid
-    """
-    # Get filename from path and search for report type
-    conf_fname = os.path.split(conf_path)[1] 
-    match = re.search(r"^\w{2}\d{4}.*_(\w{2,3})_", conf_fname)
-    if match:
-        rep_type = match.group(1).lower()
-
-        # Verify report type
-        if rep_type not in SimulationReport.report_types():
-            print(f"ERROR: FILENAME '{conf_fname}' or PATH '{conf_path}' is not valid")
-            sys.exit(-1)
-
-    return rep_type
 
 
 def fetch_interfaces(dir_path):
@@ -69,13 +51,14 @@ def _load_template_paths(file_path):
     return templates
 
 
-def init_reports(rep_type, conf_tools):
+def init_reports(conf_tools):
     """
     Initializes and returns Report based on user input and template
     """
     templates = _load_template_paths(TXT_PATH)
     reports = None
     proj_num = conf_tools.proj_num[:]
+    rep_type = conf_tools.type
 
     # Instantiate report based on user input
     if rep_type == "si":
@@ -84,8 +67,6 @@ def init_reports(rep_type, conf_tools):
         reports = PIReport(templates[rep_type], proj_num)
     elif rep_type == "emc":
         reports = EMCReport(templates[rep_type], proj_num)
-    else:
-        reports = ThermalReport(templates[rep_type], proj_num)
 
     # Ensure returned object is of consistent data structure
     if not isinstance(reports, list):
@@ -188,7 +169,7 @@ def save_report(report):
     print(f"{filename} saved in {path}.")
 
 
-def weave_reports(rep_type, conf_path):
+def weave_reports(conf_path):
     """
     Generate reports based on input confirmation tools and indicated type
     """
@@ -200,7 +181,7 @@ def weave_reports(rep_type, conf_path):
     # Initialize reports,
     # then make a cover slide, copy/paste relevant slides, 
     # and save for each report
-    reports = init_reports(rep_type, ct) 
+    reports = init_reports(ct) 
     for rep in reports:
         make_cover(ct, rep)
         copy_slides(ct, rep)

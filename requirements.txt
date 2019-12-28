@@ -23,5 +23,6 @@ six==1.13.0
 typed-ast==1.4.0
 watchdog==0.9.0
 wcwidth==0.1.7
+-e git+https://github.com/rdghosal/Weaver.py.git@7fe115befb7fb512804b5bf0f9baeb13db5bf43a#egg=weaver&subdirectory=weaver
 wrapt==1.11.2
 zipp==0.6.0

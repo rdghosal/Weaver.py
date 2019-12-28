@@ -171,6 +171,23 @@ def _read_interface(slide, if_name, sim_dir):
     return interface
 
 
+def _set_type(pptx):
+    """
+    Parses path for report type 
+    and verifies if report type is valid
+    """
+    # Get filename and search for report type
+    match = re.search(r"^\w{2}\d{4}.*_(\w{2,3})_", pptx.Name)
+    if match:
+        rep_type = match.group(1).lower()
+
+        # Verify report type
+        if rep_type not in ["emc", "pi", "si"]:
+            print(f"ERROR: FILENAME '{pptx.Name}' or PATH '{pptx.FullName}' is not valid")
+            raise FilenameError
+
+    return rep_type
+
 
 # =======================
 # -- Class Definition --
@@ -185,6 +202,7 @@ class ConfirmationTools(Report):
         # Regex project number from title
         self.__proj_num = re.search(r"(^\w{2}\d{4})", self.title).group(1)[:] 
         self.__toc = None
+        self.__type = _set_type(self.pptx)
 
     @property
     def title(self):
@@ -282,3 +300,7 @@ class ConfirmationTools(Report):
             if_name = _parse_if_name(slide.Shapes)
             interface = _read_interface(slide, if_name, sim_dir)
             yield interface
+
+
+class FilenameError(Exception):
+    pass

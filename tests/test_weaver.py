@@ -2,9 +2,9 @@ import pytest
 import os
 import win32com.client as win32
 
-from .weaver import _get_date, _load_template_paths, _get_rep_type, fetch_interfaces, init_reports
-from .rep_types import ConfirmationTools, SimulationReport
-from .consts import TXT_PATH, COVER_SLIDE 
+from weaver.weaver import _get_date, _load_template_paths, fetch_interfaces, init_reports
+from weaver.reports import ConfirmationTools, SimulationReport
+from weaver.util import TXT_PATH, COVER_SLIDE 
 
 
 """ 
@@ -92,18 +92,18 @@ def mock_date(monkeypatch, request):
 #  FUNCTIONS
 # //////////////////////
 
-def test_get_rep_type(params):
+# def test_get_rep_type(params):
 
-    # (1) Setup
-    expected_type = "si"
+#     # (1) Setup
+#     expected_type = "si"
 
-    # (2) Execution
-    actual_type = _get_rep_type(params["conf_path"])
+#     # (2) Execution
+#     actual_type = _get_rep_type(params["conf_path"])
 
-    # (3) Verify
-    assert actual_type == expected_type
+#     # (3) Verify
+#     assert actual_type == expected_type
 
-    # (4) Teardown
+#     # (4) Teardown
 
 
 def test_fetch_interfaces(params):
@@ -167,7 +167,7 @@ def test_init_reports(conf_tools):
     rep_str = f"{rep_type.upper()} Report for {interfaces[0]}"
 
     # (2) Execute
-    reports = init_reports(rep_type, conf_tools)
+    reports = init_reports(conf_tools)
     test_rep = reports[0]
 
     # (3) Verify
