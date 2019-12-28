@@ -4,123 +4,31 @@ from .util import Interface, Signal
 from ..consts import COVER_SLIDE, TITLE_NAME, TABLE_COORDS, TOC, MSOTRUE
 
 
-class ConfirmationTools(Report):
+# =======================
+# -- Helper Functions --
+# =======================
+
+def _parse_if_name(shapes):
     """
-    Class for initial, pre-simulation report
+    Searches through Slide.Shapes for Shape with Text;
+    Returns Interface.name if found based on pattern
     """
-    def __init__(self, pptx):
-        super().__init__(pptx)
-        # Regex project number from title
-        self.__proj_num = re.search(r"(^\w{2}\d{4})", self.title).group(1)[:] 
-        self.__toc = None
-
-    @property
-    def title(self):
-        """
-        Fetches title from cover slide
-        """
-        # Pull title from cover slide
-        return self.pptx.Slides(COVER_SLIDE).\
-               Shapes(TITLE_NAME).TextFrame.TextRange.Text[:] 
-
-    def get_creators(self):
-        """
-        Gets list of authors, reviewers, and approvers 
-        from Confirmation Tools object
-        """
-        creators = {
-            "preparers": "",
-            "reviewers": "",
-            # "approvers": ""
-        }
-
-        for party, coords in TABLE_COORDS.items():
-            if party in creators.keys():
-                creators_table = self._get_table(self.pptx.Slides(COVER_SLIDE).Shapes)
-                creators[party] = creators_table.\
-                                  Cell(coords[0], coords[1]).Shape.TextFrame.TextRange.Text[:]
-
-        return creators
-
-    def get_toc(self):
-        """
-        Returns dict of section->slide_num(s) for sections of interest
-        """
-        if not self.__toc:
-            toc = self._get_table(self.pptx.Slides(TOC).Shapes)
-            # To be populated with slide nums
-            toc_dict = {
-                "sim_targets": None,
-                "eye_masks": None,
-                "topology": None
-            }
-
-            row = 2 # Starting y coord of table traversal
-            while True:
-                section_name = toc.Cell(row, 1).Shape.TextFrame.TextRange.Text[:]
-                section_name = section_name.lower()
-                # Only contents in section 2 is of interest
-                try:
-                    if re.search(r"^\s*2\.", section_name):
-                        if section_name.find("target") > -1:
-                            slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
-                            toc_dict["sim_targets"] = slide_num
-                        elif section_name.find("mask") > -1:
-                            slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
-                            toc_dict["eye_masks"] = slide_num
-                        elif section_name.find("topology") > -1:
-                            slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
-                            toc_dict["topology"] = slide_num
-                    # Check if end of TOC in order to end loop
-                    elif section_name == "":
-                        break
-                    # Move down TOC
-                    row += 1 
-                # In case pointer has reached end of TOC
-                except IndexError:
-                    break
-
-            # Convert str slide_nums to int for slide indexing
-            for section, slide_nums in toc_dict.items():
-                # Check if range of slide_nums
-                # In case of hyphen type -
-                if slide_nums.find("-") > -1:
-                    slide_nums = slide_nums.split("-")
-                    toc_dict[section] = [ int(num) for num in slide_nums ]
-                # In case of hyphen type ―    
-                elif slide_nums.find("\u2013") > -1:
-                    slide_nums = slide_nums.split("\u2013") 
-                    toc_dict[section] = [ int(num) for num in slide_nums ]
-                # If single number
-                else:
-                    print(slide_nums)
-                    # Keep returned data structures consistent by keeping values as list type
-                    toc_dict[section] = toc_dict.get(section, list(int(slide_nums)))
-
-            self.__toc = toc_dict
-        
-        return self.__toc
-
-    def get_interfaces(self, sim_dir=""):
-        toc = self.get_toc()
-        start, end = toc["sim_targets"][0], toc["sim_targets"][1]
-        for i in range(start, end + 1):
-            last_title = ""
-            slide = self.pptx.Slides(i)
-            for shape in slide.Shapes:
-                if shape.HasTextFrame == MSOTRUE:
-                    text = shape.TextFrame.TextRange.Text[:].lower()
-                    curr_title = text[:]
-                    if last_title != curr_title: 
-                        last_title = curr_title
-                        if text.find("target") > -1:
-                            tar_index = text.index(":")
-                            # In case full-size colon used
-                            if not tar_index:
-                                tar_index = text.find("：")
-                            # Displace pointer to the right by 1
-                            if_name = text[tar_index+1:].strip()
-                            yield _read_interface(slide, if_name, sim_dir)
+    if_name = ""
+    for shape in shapes:
+        if shape.HasTextFrame == MSOTRUE:
+            text = shape.TextFrame.TextRange.Text[:].lower()
+            curr_title = text[:]
+            if last_title != curr_title: 
+                last_title = curr_title
+                if text.find("target") > -1:
+                    tar_index = text.index(":")
+                    # In case full-size colon used
+                    if not tar_index:
+                        tar_index = text.find("：")
+                    # Displace pointer to the right by 1 and strip spaces
+                    if_name = text[tar_index+1:].strip()
+                    
+    return if_name
 
 
 def _get_if_tables(shapes):
@@ -261,3 +169,116 @@ def _read_interface(slide, if_name, sim_dir):
         interface.signals[i] = _set_signal_devices(interface, signal, ic_model_table, sim_dir)
 
     return interface
+
+
+
+# =======================
+# -- Class Definition --
+# =======================
+
+class ConfirmationTools(Report):
+    """
+    Class for initial, pre-simulation report
+    """
+    def __init__(self, pptx):
+        super().__init__(pptx)
+        # Regex project number from title
+        self.__proj_num = re.search(r"(^\w{2}\d{4})", self.title).group(1)[:] 
+        self.__toc = None
+
+    @property
+    def title(self):
+        """
+        Fetches title from cover slide
+        """
+        # Pull title from cover slide
+        return self.pptx.Slides(COVER_SLIDE).\
+               Shapes(TITLE_NAME).TextFrame.TextRange.Text[:] 
+
+    def get_creators(self):
+        """
+        Gets list of authors, reviewers, and approvers 
+        from Confirmation Tools object
+        """
+        creators = {
+            "preparers": "",
+            "reviewers": "",
+            # "approvers": ""
+        }
+
+        for party, coords in TABLE_COORDS.items():
+            if party in creators.keys():
+                creators_table = self._get_table(self.pptx.Slides(COVER_SLIDE).Shapes)
+                creators[party] = creators_table.\
+                                  Cell(coords[0], coords[1]).Shape.TextFrame.TextRange.Text[:]
+
+        return creators
+
+    def get_toc(self):
+        """
+        Returns dict of section->slide_num(s) for sections of interest
+        """
+        if not self.__toc:
+            toc = self._get_table(self.pptx.Slides(TOC).Shapes)
+            # To be populated with slide nums
+            toc_dict = {
+                "sim_targets": None,
+                "eye_masks": None,
+                "topology": None
+            }
+
+            row = 2 # Starting y coord of table traversal
+            while True:
+                section_name = toc.Cell(row, 1).Shape.TextFrame.TextRange.Text[:]
+                section_name = section_name.lower()
+                # Only contents in section 2 is of interest
+                try:
+                    if re.search(r"^\s*2\.", section_name):
+                        if section_name.find("target") > -1:
+                            slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
+                            toc_dict["sim_targets"] = slide_num
+                        elif section_name.find("mask") > -1:
+                            slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
+                            toc_dict["eye_masks"] = slide_num
+                        elif section_name.find("topology") > -1:
+                            slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
+                            toc_dict["topology"] = slide_num
+                    # Check if end of TOC in order to end loop
+                    elif section_name == "":
+                        break
+                    # Move down TOC
+                    row += 1 
+                # In case pointer has reached end of TOC
+                except IndexError:
+                    break
+
+            # Convert str slide_nums to int for slide indexing
+            for section, slide_nums in toc_dict.items():
+                # Check if range of slide_nums
+                # In case of hyphen type -
+                if slide_nums.find("-") > -1:
+                    slide_nums = slide_nums.split("-")
+                    toc_dict[section] = [ int(num) for num in slide_nums ]
+                # In case of hyphen type ―    
+                elif slide_nums.find("\u2013") > -1:
+                    slide_nums = slide_nums.split("\u2013") 
+                    toc_dict[section] = [ int(num) for num in slide_nums ]
+                # If single number
+                else:
+                    print(slide_nums)
+                    # Keep returned data structures consistent by keeping values as list type
+                    toc_dict[section] = toc_dict.get(section, list(int(slide_nums)))
+
+            self.__toc = toc_dict
+        
+        return self.__toc
+
+    def get_interfaces(self, sim_dir=""):
+        toc = self.get_toc()
+        start, end = toc["sim_targets"][0], toc["sim_targets"][1]
+        for i in range(start, end + 1):
+            last_title = ""
+            slide = self.pptx.Slides(i)
+            if_name = _parse_if_name(slide.Shapes)
+            interface = _read_interface(slide, if_name, sim_dir)
+            yield interface
