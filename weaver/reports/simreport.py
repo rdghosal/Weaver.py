@@ -19,14 +19,5 @@ class SimulationReport(Report):
     def report_type(self):
         raise NotImplementedError 
 
-    def read_toc(self):
+    def build_slides(self, conf_tools):
         raise NotImplementedError
-
-    def copy_from_conf(self, conf_tools):
-        pass
-
-    # @abstractmethod
-    # def __str__(self):
-    #     return NotImplementedError
-
-    

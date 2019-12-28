@@ -1,4 +1,5 @@
 from ..simreport import SimulationReport
+from ...util import TITLE_NAME, MSOTRUE
 
 SIM_TARGETS = 6
 
@@ -31,10 +32,10 @@ class EMCReport(SimulationReport):
     def _update_toc(self):
         """Updates table of contents after appending slides to a section"""
         # TODO
-        pass
     
     def _get_power_nets(self, toc, conf_tools):
         """Reads table of contents (TOC) for pages that need making"""
+        toc = conf_tools.get_toc()
         tar_pages = toc["sim_targets"]
         # Get page(s) and copy them into report
 
@@ -106,7 +107,7 @@ class EMCReport(SimulationReport):
         # Exclude init template slide and calc number of times to copy
         num_nets = len(self.power_nets) - 1
         count = 0
-        self.pptx.Slides(index).Copy
+        self.pptx.Slides(index).Copy()
         # Use filter to only get those nets that need resonance analysis
         p_nets = self.power_nets
         while count < num_nets:
@@ -133,7 +134,7 @@ class EMCReport(SimulationReport):
         """Adds appendix slides according to the power net list"""
         # Move to first slide of appendix
         self.pptx.__curr_slide += 2
-        start = self.pptx.__curr_slide
+        start = self.__curr_slide
         p_nets = self.power_nets
 
         self.pptx.Slides(start).Copy()
@@ -159,19 +160,3 @@ class EMCReport(SimulationReport):
                     text = text_range.Text[:]
                     new = text.replace("<POWER_NET[i]>", p_nets[j])
                     text_range.Text = new
-
-
-
-                        
-        
-        
-
-        
-
-
-
-
-
-
-
-        

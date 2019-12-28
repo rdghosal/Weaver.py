@@ -1,5 +1,5 @@
-from ..simreport import SimulationReport
-from abc import ABC
+from .. import SimulationReport
+
 
 class SIReport(SimulationReport):
     """
@@ -24,8 +24,5 @@ class SIReport(SimulationReport):
     def interface(self):
         return self.__interface
 
-    def copy_from_conf(self, conf_tools):
-        pass
-    
-    def clone_temp_slides(self):
+    def build_slides(self, conf_tools):
         pass
