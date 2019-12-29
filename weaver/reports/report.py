@@ -1,4 +1,4 @@
-from ..consts import MSOTRUE
+from ..util import MSOTRUE
 
 
 class Report():

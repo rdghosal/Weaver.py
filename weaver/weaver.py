@@ -1,5 +1,6 @@
 import os
 import win32com.client as win32
+from pywintypes import com_error
 
 # from time import sleep
 # from abc import ABC, abstractmethod
@@ -20,19 +21,20 @@ def _parse_if_name(shapes):
     Returns Interface.name if found based on pattern
     """
     if_name = ""
+    last_title = ""
     for shape in shapes:
         if shape.HasTextFrame == MSOTRUE:
             text = shape.TextFrame.TextRange.Text[:].lower()
             curr_title = text[:]
             if last_title != curr_title: 
                 last_title = curr_title
-                if text.find("target") > -1:
-                    tar_index = text.index(":")
-                    # In case full-size colon used
-                    if not tar_index:
-                        tar_index = text.find("：")
-                    # Displace pointer to the right by 1 and strip spaces
-                    if_name = text[tar_index+1:].strip()
+                if text.find("target & condition") > -1:
+                    if text.find(":") > -1:
+                        # Displace pointer to the right by 1 and strip spaces
+                        if_name = text[text.find(":")+1:].strip()
+                    # # In case full-size colon used
+                    # except:
+                    #     tar_index = text.find("：")
                     
     return if_name
 
@@ -115,7 +117,7 @@ def _set_signal_devices(interface, signal, table, sim_dir):
             row += 1
 
         # Reached end of table
-        except IndexError:
+        except com_error:
             break
 
     # Use simulation directory for ibis models if not found in confirmation tools
@@ -126,31 +128,43 @@ def _set_signal_devices(interface, signal, table, sim_dir):
     return signal
 
 
-def _set_signal(signal, table, row):
+def _set_signal(table):
     """
     Set signal features based on target and frequency table
     """
-    # Set name
-    signal_group = table.Cell(row, 1).Shape.TextFrame.TextRange.Text[:]
-    index = signal_group.find(":")
-    signal.name = signal_group[index+1:] if index > -1 else signal_group
-    if index > -1: 
-        signal.type = signal_group[:index]
+    signal = Signal()
+    row = 2
+    while True:
+        # Set name
+        try:
+            signal_group = table.Cell(row, 1).Shape.TextFrame.TextRange.Text[:]
+            index = signal_group.find(":")
+            signal.name = signal_group[index+1:] if index > -1 else signal_group
+            if index > -1: 
+                signal.type = signal_group[:index]
+            # print(signal.name)
 
-    # Set frequency
-    freq_str = table.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
-    signal.frequency = freq_str.split()[0], freq_str.split()[1]
+            # Set frequency
+            freq_str = table.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
+            try:
+                signal.frequency = freq_str.split()[0], freq_str.split()[1]
+            except IndexError:
+                signal.frequency = None
 
-    # Set driver / receiver
-    trans_line = table.Cell(row, 3).Shape.TextFrame.TextRange.Text[:]
-    signal.driver.ref_num = trans_line.split("~")[0]
-    signal.receiver.ref_num = trans_line.split("~")[1]
+            # Set driver / receiver
+            trans_line = table.Cell(row, 3).Shape.TextFrame.TextRange.Text[:]
+            signal.driver.ref_num = trans_line.split("~")[0]
+            signal.receiver.ref_num = trans_line.split("~")[1]
 
-    # Set PVT value
-    signal.pvt = table.Cell(row, 5).Shape.TextFrame.TextRange.Text[:]
+            # Set PVT value
+            signal.pvt = table.Cell(row, 5).Shape.TextFrame.TextRange.Text[:]
+            
+            yield signal
+            row += 1
+
+        except com_error:
+            break
     
-    return signal
-
 
 def _read_interface(slide, if_name, sim_dir):
     """
@@ -160,21 +174,14 @@ def _read_interface(slide, if_name, sim_dir):
     interface = Interface(if_name)
 
     tar_and_freq_table, ic_model_table = _get_if_tables(slide.Shapes)
+    if tar_and_freq_table and ic_model_table:
+        for signal in _set_signal(tar_and_freq_table): 
+            interface.signals.append(signal)
+        for i, signal in enumerate(interface.signals):
+            interface.signals[i] = _set_signal_devices(interface, signal, ic_model_table, sim_dir)
 
-    while True:
-        row = 2
-        try:
-            # Instantiate and set signal
-            signal = Signal()
-            interface.signals.append(_set_signal(signal, tar_and_freq_table, row))
+        return interface
 
-        except IndexError:
-            break
-    
-    for i, signal in enumerate(interface.signals):
-        interface.signals[i] = _set_signal_devices(interface, signal, ic_model_table, sim_dir)
-
-    return interface
 
 def get_interfaces(conf_tools, sim_dir):
     toc = conf_tools.get_toc()
@@ -184,7 +191,8 @@ def get_interfaces(conf_tools, sim_dir):
         slide = conf_tools.pptx.Slides(i)
         if_name = _parse_if_name(slide.Shapes)
         interface = _read_interface(slide, if_name, sim_dir)
-        yield interface
+        if interface:
+            yield interface
 
 
 def _load_template_paths(file_path):
@@ -212,7 +220,7 @@ def _load_template_paths(file_path):
     return templates
 
 
-def init_reports(conf_tools, sim_dir):
+def init_reports(conf_tools, sim_dir=""):
     """
     Initializes and returns Report based on user input and template
     """

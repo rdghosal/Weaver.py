@@ -5,6 +5,7 @@ class Interface():
         self.__name = name
         self.signals = list()
 
+    @property
     def name(self):
         return self.__name[:]
 
@@ -31,13 +32,11 @@ class Device(ABC):
 
 class Driver(Device):
     def __init__(self):
-        super().__init__(self)
-
+        super().__init__()
 
 class Receiver(Device):
     def __init__(self):
-        super().__init__(self)
-
+        super().__init__()
 
 class Signal():
     def __init__(self):
@@ -48,8 +47,10 @@ class Signal():
         self.pvt = str()
         self.frequency = None
 
+    @property
     def driver(self):
         return self.__driver
     
+    @property
     def receiver(self):
         return self.__receiver

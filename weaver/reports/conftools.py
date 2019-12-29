@@ -48,6 +48,13 @@ class ConfirmationTools(Report):
         # Pull title from cover slide
         return self.pptx.Slides(COVER_SLIDE).\
                Shapes(TITLE_NAME).TextFrame.TextRange.Text[:] 
+    
+    @property
+    def type(self):
+        """
+        Returns ConfirmationTools type
+        """
+        return self.__type
 
     def get_creators(self):
         """

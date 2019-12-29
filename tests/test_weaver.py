@@ -2,9 +2,9 @@ import pytest
 import os
 import win32com.client as win32
 
-from weaver.weaver import _get_date, _load_template_paths, fetch_interfaces, init_reports
+from weaver.weaver import _get_date, _load_template_paths, init_reports
 from weaver.reports import ConfirmationTools, SimulationReport
-from weaver.util import TXT_PATH, COVER_SLIDE 
+from weaver import TXT_PATH, COVER_SLIDE 
 
 
 """ 
@@ -50,11 +50,12 @@ def ppt():
     Returns PowerPoint singleton
     """
     # (1) Setup
-    PowerPoint = win32.gencache.EnsureDispatch("PowerPoint.Application")
+    PowerPoint = win32.Dispatch("PowerPoint.Application")
     yield PowerPoint
 
     # (4) Teardown
-    PowerPoint.Quit()
+    # TODO: Windows fatal exception: code 0x800706be
+    # PowerPoint.Quit()
 
 
 @pytest.fixture(scope="module")
@@ -92,34 +93,34 @@ def mock_date(monkeypatch, request):
 #  FUNCTIONS
 # //////////////////////
 
-# def test_get_rep_type(params):
-
-#     # (1) Setup
-#     expected_type = "si"
-
-#     # (2) Execution
-#     actual_type = _get_rep_type(params["conf_path"])
-
-#     # (3) Verify
-#     assert actual_type == expected_type
-
-#     # (4) Teardown
-
-
-def test_fetch_interfaces(params):
+def test_get_rep_type(conf_tools):
 
     # (1) Setup
-    sim_dir = params["sim_dir"] 
-    expected_if_list = ["RGMII"]
+    expected_type = "si"
 
-    # (2) Execute
-    actual_if_list = fetch_interfaces(sim_dir)
+    # (2) Execution
+    actual_type = conf_tools.type
 
     # (3) Verify
-    assert isinstance(actual_if_list, list)
-    assert actual_if_list == expected_if_list 
+    assert actual_type == expected_type
 
     # (4) Teardown
+
+
+# def test_fetch_interfaces(params):
+
+#     # (1) Setup
+#     sim_dir = params["sim_dir"] 
+#     expected_if_list = ["RGMII"]
+
+#     # (2) Execute
+#     actual_if_list =  (sim_dir)
+
+#     # (3) Verify
+#     assert isinstance(actual_if_list, list)
+#     assert actual_if_list == expected_if_list 
+
+#     # (4) Teardown
     
     
 
@@ -163,7 +164,7 @@ def test_init_reports(conf_tools):
 
     # (1) Setup
     rep_type = "si"
-    interfaces = ["RGMII"]
+    interfaces = ["MII"]
     rep_str = f"{rep_type.upper()} Report for {interfaces[0]}"
 
     # (2) Execute
@@ -171,7 +172,7 @@ def test_init_reports(conf_tools):
     test_rep = reports[0]
 
     # (3) Verify
-    assert len(reports) == 1
+    assert len(reports) == 2
     assert test_rep.report_type[:].lower() == rep_type
     assert test_rep.pptx # Check if Presentation obj created
     assert str(test_rep) == rep_str

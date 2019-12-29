@@ -10,7 +10,7 @@ class SIReport(SimulationReport):
         self.__interface = interface
     
     def __str__(self):
-        return f"{self.report_type} Report for {self.interface}"
+        return f"{self.report_type} Report for {self.interface.name.upper()}"
 
     @property
     def title(self):
