@@ -61,7 +61,7 @@ class SIReport(SimulationReport):
         toc = conf_tools.get_toc()
 
         # Copy/Paste eye mask slides
-        page_ranges = [ toc["eye_masks"], toc["topology"] ]
+        page_ranges = [ toc["eye_mask"], toc["topology"] ]
         self.__curr_slide = EXEC_SUMM + 2 # Pasting should start after Methodology slide
 
         # Copies all eye mask slides and needs author to delete those unneeded
@@ -136,7 +136,7 @@ class SIReport(SimulationReport):
             if match in placeholders.keys():
                 return curr_text.replace(match, placeholders[match])
 
-    def _make_result_slides(self):
+    def _build_slides(self):
         self.pptx.Slides(self.__curr_slide).Copy() # Copy template slide
         diff = len(self.interface.signals) - 1 # Accounts for 1 template slide
         slide_ptr = self.__curr_slide # Memoize first slide index
@@ -178,6 +178,6 @@ class SIReport(SimulationReport):
         self.__curr_slide += 1 # Move to Results table
         self._fill_results_table()
         self.__curr_slide += 1
-        self._make_result_slides()
+        self._build_slides()
         self._save_report()
         

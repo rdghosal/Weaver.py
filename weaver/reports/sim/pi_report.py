@@ -1,5 +1,6 @@
-from ..simreport import SimulationReport
 import re
+from ..simreport import SimulationReport
+from ...util import MSOTRUE
 
 SIM_TARGET = 6
 SIM_TARGET_REP = 7
@@ -33,29 +34,6 @@ class PIReport(SimulationReport):
     def _get_power_nets(self):
         # TODO reuse from EMC and abstract to SimulationReport
         pass
-    
-    # def _get_duplicable_nums(self, conf_tools, first_sec, last_sec):
-    #     table = self._get_table(conf_tools.Slides(3).Shapes)
-    #     start, end = 0, 0
-    #     row = 4 # init row
-    #     while True:
-    #         text = table.Cell(row, 1).Shape.TextFrame.TextRange.Text[:]
-    #         if text.find(first_sec) > -1:
-    #             start = table.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
-    #             # Take first value
-    #             if start.find("-"):
-    #                 start = start.split("-")[0]
-    #             elif start.find("\u2013"):
-    #                 start = start.split("\u2013")[0]
-    #             start = int(start)
-    #         elif text.find(last_sec) > -1:
-    #             end = table.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
-    #             # Take last value
-    #             if end.find("-"):
-    #                 end = end.split("-")[1]
-    #             elif end.find("\u2013"):
-    #                 end = end.split("\u2013")[1]
-    #             end = int(end)
     
     def _copy_slides(self, conf_tools):
         toc = conf_tools.get_toc()
@@ -118,7 +96,7 @@ class PIReport(SimulationReport):
         }
         return net_info
 
-    def _fill_analysis_table(self, type_):
+    def _fill_analysis_tables(self, type_):
 
         index = None # To be used later for finding target slide
         anal_type = ""
@@ -164,14 +142,58 @@ class PIReport(SimulationReport):
                         col_name = "no."
 
                 table.Cell(row, col).Shape.TextFrame.TextRange.Text = target_nets[i][col_name][:]
+    
+    def _replace_placeholders(self, net, shape):
+        placeholders = {
+            "<POWER_NET[i]>": net["power net"],
+            "<V[i]>": net["voltage"],
+            "<RECEIVER_REF>": net["reference ic"]
+        }
+        # Look at TextFrame of shape or cell of table therewithin
+        if shape.HasTextFrame == MSOTRUE:
+            curr_text = shape.TextFrame.TextRange.Text[:]
+            for k in placeholders.keys():
+                if curr_text.find(k) > -1:
+                    shape.TextFrame.TextRange.Text = curr_text.replace(k, placeholders[k])
+        elif shape.HasTable == MSOTRUE:
+            tar_cells = [(2,1), (3,1)]
+            for cell in tar_cells:
+                curr_text = shape.Table.Cell(cell[0], cell[1]).Shape.TextFrame.TextRange.Text[:]
+                for k in placeholders.keys():
+                    if curr_text.find(k) > -1:
+                        shape.Table.Cell(cell[0], cell[1]).Shape.TextFrame.TextRange.Text =\
+                            curr_text.replace(k, placeholders[k])
+
+    def _build_slides(self):
+        # Set ptrs to three result type slides
+        slide_ptrs = {
+            "dc drop analysis": 19,
+            "ac drop analysis": 20,
+            "impedance analysis": 21
+        }
+
+        self.__curr_slide = 22
+        for net in self._read_power_nets():
+            for analysis in ["dc drop analysis", "ac drop analysis", "impedance analysis"]:
+                target = net[analysis] if analysis == "dc drop analysis" else net[analysis][0]
+                if target: 
+                    self.pptx.Slides(slide_ptrs[analysis]).Copy()
+                    self.pptx.Slides.Paste(self.__curr_slide)
+                    for shape in self.pptx.Slides(self.__curr_slide).Shapes:
+                        self._replace_placeholders(net, shape)
+                    self.__curr_slide += 1
+        
+        # Remove template slide
+        for v in slide_ptrs.values():
+            self.pptx.Slides(v).Delete()
+            self.__curr_slide -= 1
 
     def build_pptx(self, conf_tools):
         self._make_cover(conf_tools)
         self._copy_slides(conf_tools)
-        for type_ in ["ac", "dc", "imp"]: self._fill_analysis_table(type_)
-        # TODO make slides
+        for type_ in ["ac", "dc", "imp"]: self._fill_analysis_tables(type_)
+        self._build_slides()
         self._save_report()
-
 
 
 

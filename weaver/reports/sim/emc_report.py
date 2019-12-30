@@ -1,5 +1,5 @@
 from ..simreport import SimulationReport
-from ...util import TITLE_NAME, MSOTRUE
+from ...util import TITLE_NAME, MSOTRUE, com_error
 
 SIM_TARGETS = 6
 
@@ -32,7 +32,7 @@ class EMCReport(SimulationReport):
         """Updates table of contents after appending slides to a section"""
         # TODO
     
-    def _get_power_nets(self, toc, conf_tools):
+    def _get_power_nets(self, conf_tools):
         """Reads table of contents (TOC) for pages that need making"""
         toc = conf_tools.get_toc()
         tar_pages = toc["sim_targets"]
@@ -60,13 +60,12 @@ class EMCReport(SimulationReport):
                     has_resonance = True
                 self.__power_nets.append((net, has_resonance))
                 row += 1 # Move down table
-            except IndexError:
-                # Have reached end of table, so break while loop
+            # Found end of table
+            except com_error:
                 break
 
         self.__curr_slide += count # Move slide pointer
         return self.power_nets
-
 
     def _fill_analysis_table(self):
         """Populates resonance analysis table with power net names"""
@@ -118,7 +117,7 @@ class EMCReport(SimulationReport):
                     if text.startswith("target"):
                         # TODO: use boolean to make sure only nets needing resonance analysis are used
                         new = text.replace("<V[i]>", p_nets[count][1][:] + "V")
-                        new = new.replace("<POWER_NET[i]", p_nets[count][0][:])
+                        new = new.replace("<POWER_NET[i]>", p_nets[count][0][:])
                         s.TextFrame.TextRange.Text = new
                 elif s.HasTable == MSOTRUE:
                     s.Table.Cells(2, 1).Shape.TextFrame.TextRange.Text = p_nets[count]
@@ -159,6 +158,15 @@ class EMCReport(SimulationReport):
                     text = text_range.Text[:]
                     new = text.replace("<POWER_NET[i]>", p_nets[j])
                     text_range.Text = new
+    
+    def _build_slides(self, conf_tools):
+        self._get_power_nets(conf_tools)
+        self._fill_analysis_table()
+        self._make_reson_analysis()
+        self._add_appendix()
 
     def build_pptx(self, conf_tools):
-        pass
+        self._make_cover(conf_tools)
+        self._copy_slides(conf_tools)
+        self._build_slides(conf_tools)
+        self._save_report()

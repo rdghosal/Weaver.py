@@ -78,6 +78,9 @@ class SimulationReport(Report):
     
     def _copy_slides(self, conf_tools):
         raise NotImplementedError
+    
+    def _build_slides(self):
+        raise NotImplementedError
 
     def _save_report(self):
         """
