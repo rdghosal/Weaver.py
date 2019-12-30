@@ -1,6 +1,6 @@
 import re
 from .report import Report
-from ..util import COVER_SLIDE, TITLE_NAME, TABLE_COORDS, TOC
+from ..util import COVER_SLIDE, TITLE_NAME, TABLE_COORDS, TOC, com_error
 
 
 # =======================
@@ -83,11 +83,18 @@ class ConfirmationTools(Report):
         if not self.__toc:
             toc = self._get_table(self.pptx.Slides(TOC).Shapes)
             # To be populated with slide nums
-            toc_dict = {
-                "sim_targets": None,
-                "eye_masks": None,
-                "topology": None
-            }
+            toc_dict = { "sim_targets": None }
+
+            # Add depending on type
+            if self.type == "si":
+                toc_dict["topology"] = None 
+                toc_dict["eye_mask"] = None
+            elif self.type == "pi":
+                toc_dict["curr_consumption"] = None
+                toc_dict["voltage_margin"] = None
+            # TODO
+            # elif self.type == "emc":
+            #     toc_dict[""]
 
             row = 2 # Starting y coord of table traversal
             while True:
@@ -96,22 +103,18 @@ class ConfirmationTools(Report):
                 # Only contents in section 2 is of interest
                 try:
                     if re.search(r"^\s*2\.", section_name):
-                        if section_name.find("target") > -1:
-                            slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
-                            toc_dict["sim_targets"] = slide_num
-                        elif section_name.find("mask") > -1:
-                            slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
-                            toc_dict["eye_masks"] = slide_num
-                        elif section_name.find("topology") > -1:
-                            slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
-                            toc_dict["topology"] = slide_num
+                        for key in toc_dict.keys():
+                            target = key.split("_")[1] if key.find("_") > -1 else key
+                            if section_name.find(target) > -1:
+                                slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
+                                toc_dict[key] = slide_num
                     # Check if end of TOC in order to end loop
                     elif section_name == "":
                         break
                     # Move down TOC
                     row += 1 
                 # In case pointer has reached end of TOC
-                except IndexError:
+                except com_error:
                     break
 
             # Convert str slide_nums to int for slide indexing

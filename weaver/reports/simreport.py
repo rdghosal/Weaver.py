@@ -75,6 +75,9 @@ class SimulationReport(Report):
                     cover.Shapes.Table.Cell(coords[0], coords[1]).Shape.TextFrame.TextRange.Text = conf_creators[group][:]
 
         print(f"Cover slide generated for {self.title}.")
+    
+    def _copy_slides(self, conf_tools):
+        raise NotImplementedError
 
     def _save_report(self):
         """

@@ -34,30 +34,32 @@ class PIReport(SimulationReport):
         # TODO reuse from EMC and abstract to SimulationReport
         pass
     
-    def _get_duplicable_nums(self, conf_tools, first_sec, last_sec):
-        table = self._get_table(conf_tools.Slides(3).Shapes)
-        start, end = 0, 0
-        row = 4 # init row
-        while True:
-            text = table.Cell(row, 1).Shape.TextFrame.TextRange.Text[:]
-            if text.find(first_sec) > -1:
-                start = table.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
-                # Take first value
-                if start.find("-"):
-                    start = start.split("-")[0]
-                elif start.find("\u2013"):
-                    start = start.split("\u2013")[0]
-                start = int(start)
-            elif text.find(last_sec) > -1:
-                end = table.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
-                # Take last value
-                if end.find("-"):
-                    end = end.split("-")[1]
-                elif end.find("\u2013"):
-                    end = end.split("\u2013")[1]
-                end = int(end)
+    # def _get_duplicable_nums(self, conf_tools, first_sec, last_sec):
+    #     table = self._get_table(conf_tools.Slides(3).Shapes)
+    #     start, end = 0, 0
+    #     row = 4 # init row
+    #     while True:
+    #         text = table.Cell(row, 1).Shape.TextFrame.TextRange.Text[:]
+    #         if text.find(first_sec) > -1:
+    #             start = table.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
+    #             # Take first value
+    #             if start.find("-"):
+    #                 start = start.split("-")[0]
+    #             elif start.find("\u2013"):
+    #                 start = start.split("\u2013")[0]
+    #             start = int(start)
+    #         elif text.find(last_sec) > -1:
+    #             end = table.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
+    #             # Take last value
+    #             if end.find("-"):
+    #                 end = end.split("-")[1]
+    #             elif end.find("\u2013"):
+    #                 end = end.split("\u2013")[1]
+    #             end = int(end)
     
-    def copy_from_conf(self, pages, conf_tools):
+    def _copy_slides(self, conf_tools):
+        toc = conf_tools.get_toc()
+        pages = ( toc["sim_targets"][0], toc["voltage_margin"][1] )
         for i in range(pages[0], pages[1] + 1):
             # Skip impedance table
             if i - pages[0] == 1:
@@ -66,9 +68,8 @@ class PIReport(SimulationReport):
             self.pptx.Slides.Paste(i + 1) # Offset by one
 
     def _read_power_nets(self):
-        power_nets = []
         slide = self.pptx.Slides(SIM_TARGET_REP)
-        table = self._get_table(slide.shapes)
+        table = self._get_table(slide.Shapes)
 
         for i in range(2, len(table.Rows)):
             net = {
@@ -94,16 +95,30 @@ class PIReport(SimulationReport):
                 else:
                     net[col_name] = text[:]
 
-            power_nets.append(net)
+            yield net
     
-        self.__power_nets = power_nets[:]
+    def _parse_net_info(self, net, analysis_type, item_num):
+        if not net[analysis_type][0]:
+            return None
+        reference = net["reference ic"][:]
+        # Change in case load is set to "all"
+        if analysis_type.startswith("ac"):
+            if net["reference ic"].lower().find("all load ic"):
+                reference = reference.split("~")[0]
+                reference += net[analysis_type][1][:]
+        elif analysis_type.startswith("imp"):
+            reference = reference.split("~")[0]
+            reference += net[analysis_type][1][:]
+        # Info to be filled into table
+        net_info = {
+            "no.": item_num,
+            "power net": net["power net"],
+            "reference ic": reference,
+            "source voltage": net["voltage"]
+        }
+        return net_info
 
-    def fill_analysis_table(self, type_):
-        if type_ not in ["ac", "dc", "imp"]:
-            print("The targeted analysis type is invalid")
-            raise AnalysisTypeError
-
-        p_nets = self.__power_nets
+    def _fill_analysis_table(self, type_):
 
         index = None # To be used later for finding target slide
         anal_type = ""
@@ -119,28 +134,10 @@ class PIReport(SimulationReport):
             anal_type = "impedance analysis"
 
         target_nets = []
-
         item_num = 1
-        for n in p_nets:
-            if n[anal_type][0]:
-                reference = n["reference ic"][:]
-                # Change in case load is set to "all"
-                if type_ == "ac":
-                    if n["reference ic"].lower().find("all load ic"):
-                        reference = reference.split("~")[0]
-                        reference += n["ac drop analysis"][1][:]
-                elif type_ == "imp":
-                    reference = reference.split("~")[0]
-                    reference += n["impedance analysis"][1][:]
-                # Info to be filled into table
-                net_info = {
-                    "no.": item_num,
-                    "power net": n["power net"],
-                    "reference ic": reference,
-                    "source voltage": n["voltage"]
-                }
-                target_nets.append(net_info)
-                item_num += 1
+        for n in self._read_power_nets():
+            target_nets.append(self._parse_net_info(n, anal_type, item_num))
+            item_num += 1
         
         slide = self.pptx.Slides(index)
         table = self._get_table(slide.Shapes)
@@ -165,13 +162,15 @@ class PIReport(SimulationReport):
                         col_name = "reference ic"
                     elif col_name == "item":
                         col_name = "no."
+
                 table.Cell(row, col).Shape.TextFrame.TextRange.Text = target_nets[i][col_name][:]
 
     def build_pptx(self, conf_tools):
-        pass
-
-class AnalysisTypeError(Exception):
-    pass
+        self._make_cover(conf_tools)
+        self._copy_slides(conf_tools)
+        for type_ in ["ac", "dc", "imp"]: self._fill_analysis_table(type_)
+        # TODO make slides
+        self._save_report()
 
 
 
