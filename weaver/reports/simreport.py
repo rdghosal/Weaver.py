@@ -10,6 +10,7 @@ class SimulationReport(Report):
     def __init__(self, pptx_template, proj_num):
         super().__init__(pptx_template)
         self.__proj_num = proj_num
+        self.__curr_slide = 1
 
     @staticmethod
     def report_types():

@@ -1,3 +1,5 @@
+from pywintypes import com_error
+
 # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 # *** GLOBAL CONSTANTS ****
 # //////////////////////////////
@@ -15,6 +17,7 @@ TABLE_COORDS = {
 
 # Slide index of table of contents
 TOC = 3
+EXEC_SUMM = 4
 
 # Values to verify shape identity
 MSOTRUE = -1

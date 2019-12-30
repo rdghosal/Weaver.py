@@ -1,6 +1,6 @@
 import os
 import win32com.client as win32
-from pywintypes import com_error
+from pywintypes import com_error #TODO
 
 # from time import sleep
 # from abc import ABC, abstractmethod
@@ -157,7 +157,8 @@ def _set_signal(table):
             signal.receiver.ref_num = trans_line.split("~")[1]
 
             # Set PVT value
-            signal.pvt = table.Cell(row, 5).Shape.TextFrame.TextRange.Text[:]
+            signal.pvt = table.Cell(row, 5).Shape.TextFrame.TextRange.Text[:].split("/")
+            signal.pvt = [ item.strip() for item in signal.pvt ]
             
             yield signal
             row += 1
