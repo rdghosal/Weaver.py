@@ -96,14 +96,14 @@ class PIReport(SimulationReport):
 
             power_nets.append(net)
     
-        self.power_nets = power_nets[:]
+        self.__power_nets = power_nets[:]
 
     def fill_analysis_table(self, type_):
         if type_ not in ["ac", "dc", "imp"]:
             print("The targeted analysis type is invalid")
             raise AnalysisTypeError
 
-        p_nets = self.power_nets
+        p_nets = self.__power_nets
 
         index = None # To be used later for finding target slide
         anal_type = ""
@@ -166,7 +166,9 @@ class PIReport(SimulationReport):
                     elif col_name == "item":
                         col_name = "no."
                 table.Cell(row, col).Shape.TextFrame.TextRange.Text = target_nets[i][col_name][:]
-        
+
+    def build_pptx(self, conf_tools):
+        pass
 
 class AnalysisTypeError(Exception):
     pass

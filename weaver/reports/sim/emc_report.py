@@ -11,7 +11,6 @@ class EMCReport(SimulationReport):
     def __init__(self, template, proj_num):
         super().__init__(template, proj_num)
         self.__power_nets = []
-        self.__curr_slide = 1 # To store state of slide making
         # TODO: implement a toc prop for random access
 
     def __str__(self):
@@ -117,7 +116,7 @@ class EMCReport(SimulationReport):
                 if s.HasTextFrame == MSOTRUE:
                     text = s.TextFrame.TextRange.Text[:].lower()
                     if text.startswith("target"):
-                        # TODO: use boolean to make sure only needs needing resonance analysis are used
+                        # TODO: use boolean to make sure only nets needing resonance analysis are used
                         new = text.replace("<V[i]>", p_nets[count][1][:] + "V")
                         new = new.replace("<POWER_NET[i]", p_nets[count][0][:])
                         s.TextFrame.TextRange.Text = new
@@ -160,3 +159,6 @@ class EMCReport(SimulationReport):
                     text = text_range.Text[:]
                     new = text.replace("<POWER_NET[i]>", p_nets[j])
                     text_range.Text = new
+
+    def build_pptx(self, conf_tools):
+        pass

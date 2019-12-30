@@ -162,15 +162,14 @@ class SIReport(SimulationReport):
             slide_ptr += 1
             signal_count += 1
         
-
-    def build_slides(self, conf_tools):
+    def build_pptx(self, conf_tools):
         # Name composed of more than one word
         # and is ignored for being a special case report
         if self.interface.name.find(" ") > -1:
             print(f"Ignoring build for interface {self.interface} in {self.proj_num}")
             pass
 
-        # TODO copy_cover
+        self._make_cover(conf_tools)
         self._fill_toc()
         self._fill_exec_summ()
         self._copy_slides(conf_tools)
@@ -180,7 +179,5 @@ class SIReport(SimulationReport):
         self._fill_results_table()
         self.__curr_slide += 1
         self._make_result_slides()
-        # TODO self.pptx.Save()
-        self.pptx.Close()
-        print(f"Generated report for {self.pptx.Name}")
+        self._save_report()
         
