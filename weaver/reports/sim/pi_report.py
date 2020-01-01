@@ -39,15 +39,30 @@ class PIReport(SimulationReport):
     
     def _copy_slides(self, conf_tools):
         toc = conf_tools.get_toc()
+        appendix = toc["appendix"]
+        for i in range(appendix[0], appendix[1] + 1):
+            # Check all shapes
+            for shape in conf_tools.pptx.Slides(i).Shapes:
+                if shape.HasTextFrame == MSOTRUE:
+                    curr_text = shape.TextFrame.TextRange.Text[:]
+                    if curr_text.find("Topology") > -1:
+                        start = curr_text.find(":")
+                        new_text = curr_text[start+1:]
+                        shape.TextFrame.TextRange.Text = new_text.strip()
+                        conf_tools.pptx.Slides(i).Copy()
+                        sleep(.25)
+                        self.pptx.Slides.Paste(len(self.pptx.Slides) - 1) # Put at second to last slide
+
         pages = ( toc["sim_target"][0], toc["voltage_margin"][1] )
-        for i in range(pages[0], pages[1] + 1):
+        for j in range(pages[0], pages[1] + 1):
             # Skip impedance table
-            if i - pages[0] == 1:
-                i += 1
-            conf_tools.pptx.Slides(i).Copy()
+            if j - pages[0] == 1:
+                j += 1
+            conf_tools.pptx.Slides(j).Copy()
             sleep(.25)
-            self.pptx.Slides.Paste(i + 1) # Offset by one
+            self.pptx.Slides.Paste(j + 1) # Offset by one
             self.__counter += 1
+        
 
     def _read_power_nets(self):
         slide = self.pptx.Slides(SIM_TARGET_REP)
@@ -82,8 +97,8 @@ class PIReport(SimulationReport):
 
             print("\nLoaded the following net:\n")
             for k, v in net.items():
-                print(f"  {k.upper()}: {v}\n")
-            print("---------------" * 5)
+                print(f"  {k.upper()}: {v}")
+            print("\n---------------" * 5)
             yield net
     
     def _parse_net_info(self, net, analysis_type, item_num):

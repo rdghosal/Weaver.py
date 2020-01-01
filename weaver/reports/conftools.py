@@ -93,6 +93,7 @@ class ConfirmationTools(Report):
             elif self.type == "pi":
                 toc_dict["curr_consumption"] = None
                 toc_dict["voltage_margin"] = None
+                toc_dict["appendix"] = None
             # TODO
             # elif self.type == "emc":
             #     toc_dict[""]
@@ -103,7 +104,7 @@ class ConfirmationTools(Report):
                 section_name = section_name.lower()
                 # Only contents in section 2 is of interest
                 try:
-                    if re.search(r"^\s*\d\.", section_name):
+                    if re.search(r"^\s*\d?\.?\d?\w+", section_name):
                         for key in toc_dict.keys():
                             target = key.split("_")[-1] if key.find("_") > -1 else key
                             if self.type == "si":
