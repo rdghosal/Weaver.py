@@ -1,6 +1,7 @@
 import re
+from time import sleep
 from .. import SimulationReport
-from ...util import TOC, EXEC_SUMM, MSOTRUE, com_error
+from util import TOC, EXEC_SUMM, MSOTRUE, com_error
 
 
 class SIReport(SimulationReport):
@@ -12,11 +13,11 @@ class SIReport(SimulationReport):
         self.__interface = interface
     
     def __str__(self):
-        return f"{self.report_type} Report for {self.interface.name.upper()}"
+        return f"{self.report_type} Report for {self.interface.name}"
 
     @property
     def title(self):
-        return f"{self.proj_num}\nVerification of Signal Integrity\n{self.interface} [Ver.1.0]"
+        return f"{self.proj_num}\nVerification of Signal Integrity\n{self.interface.name} [Ver.1.0]"
 
     @property
     def report_type(self):
@@ -41,7 +42,8 @@ class SIReport(SimulationReport):
                     break
                 # Replace found placeholder
                 if curr_text.find("<INTERFACE>") > -1:
-                    toc_table.Cell(row, 1).Shape.TextFrame.TextRange.Text[:] = curr_text.replace("<INTERFACE>", self.interface.name)
+                    toc_table.Cell(row, 1).Shape.TextFrame.TextRange.Text = \
+                        curr_text.replace("<INTERFACE>", self.interface.name)
                 row +=1
             except com_error:
                 break
@@ -61,18 +63,19 @@ class SIReport(SimulationReport):
         toc = conf_tools.get_toc()
 
         # Copy/Paste eye mask slides
-        page_ranges = [ toc["eye_mask"], toc["topology"] ]
-        self.__curr_slide = EXEC_SUMM + 2 # Pasting should start after Methodology slide
+        page_ranges = [ toc["eye_mask_judgement"], toc["topology"] ]
+        self._curr_slide = 5 # Pasting should start after Methodology slide
 
         # Copies all eye mask slides and needs author to delete those unneeded
         for pages in page_ranges:
             for i in range(pages[0], pages[1] + 1):
                 conf_tools.pptx.Slides(i).Copy()
-                self.pptx.Slides.Paste(self.__curr_slide)
-                self.__curr_slide += 1
+                sleep(.25)
+                self.pptx.Slides.Paste(self._curr_slide)
+                self._curr_slide += 1
     
     def _fill_divider(self):
-        divider = self.pptx.Slides(self.__curr_slide)
+        divider = self.pptx.Slides(self._curr_slide)
         for shape in divider.Shapes:
             if shape.HasTextFrame == MSOTRUE:
                 placeholder = "<INTERFACE>"
@@ -82,7 +85,7 @@ class SIReport(SimulationReport):
 
     def _fill_results_table(self):
         """Fills Results table with signal info"""
-        results_table_slide = self.pptx.Slides(self.__curr_slide)
+        results_table_slide = self.pptx.Slides(self._curr_slide)
         results_table = self._get_table(results_table_slide.Shapes)
         
         row = 5
@@ -123,7 +126,7 @@ class SIReport(SimulationReport):
         placeholders = {
             "<INTERFACE>": self.interface.name,
             "<SIGNAL>": self.interface.signals[signal_count].name,
-            "<FREQ>": self.interface.signals[signal_count].frequency,
+            "<FREQ>": " ".join(self.interface.signals[signal_count].frequency),
             "<DRIVER_IBS>": self.interface.signals[signal_count].driver.ibis_model,
             "<DRIVER_MODEL>": self.interface.signals[signal_count].driver.buffer_model,
             "<RECEIVER_IBS>": self.interface.signals[signal_count].receiver.ibis_model,
@@ -135,22 +138,27 @@ class SIReport(SimulationReport):
             match = match.group(1) # Get capture group
             if match in placeholders.keys():
                 return curr_text.replace(match, placeholders[match])
+            else:
+                return ""
 
     def _build_slides(self):
-        self.pptx.Slides(self.__curr_slide).Copy() # Copy template slide
+        self.pptx.Slides(self._curr_slide).Copy() # Copy template slide
+        sleep(.25)
         diff = len(self.interface.signals) - 1 # Accounts for 1 template slide
-        slide_ptr = self.__curr_slide # Memoize first slide index
+        slide_ptr = self._curr_slide # Memoize first slide index
         signal_count = 0
         if diff > 0:
             for _ in range(diff):
-                self.__curr_slide += 1
-                self.pptx.Slides.Paste(self.__curr_slide)
+                self._curr_slide += 1
+                self.pptx.Slides.Paste(self._curr_slide)
 
-        while slide_ptr <= self.__curr_slide:
+        while slide_ptr <= self._curr_slide:
             for shape in self.pptx.Slides(slide_ptr).Shapes:
                 if shape.HasTextFrame == MSOTRUE:
                     curr_text = shape.TextFrame.TextRange.Text[:]
-                    shape.TextFrame.TextRange.Text = self._replace_placeholder(curr_text, signal_count)
+                    if curr_text:
+                        new_text = self._replace_placeholder(curr_text, signal_count)
+                        if new_text: shape.TextFrame.TextRange.Text = new_text 
                 elif shape.HasTable == MSOTRUE:
                     # Check first header cell
                     if shape.Table.Cell(1, 1).Shape.TextFrame.TextRange.Text == "Item":
@@ -166,18 +174,18 @@ class SIReport(SimulationReport):
         # Name composed of more than one word
         # and is ignored for being a special case report
         if self.interface.name.find(" ") > -1:
-            print(f"Ignoring build for interface {self.interface} in {self.proj_num}")
-            pass
+            print("Ignoring build for interface") 
+            print(f"{self.interface.name} in {self.proj_num}")
+            return
 
         self._make_cover(conf_tools)
         self._fill_toc()
         self._fill_exec_summ()
         self._copy_slides(conf_tools)
-        self.__curr_slide += 1 # Move slide ptr to divider
         self._fill_divider()
-        self.__curr_slide += 1 # Move to Results table
+        self._curr_slide += 1 # Move to Results table
         self._fill_results_table()
-        self.__curr_slide += 1
+        self._curr_slide += 1
         self._build_slides()
         self._save_report()
         

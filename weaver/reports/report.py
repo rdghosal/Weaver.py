@@ -1,4 +1,4 @@
-from ..util import MSOTRUE
+from util import MSOTRUE
 
 
 class Report():

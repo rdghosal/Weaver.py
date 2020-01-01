@@ -2,9 +2,9 @@ import pytest
 import os
 import win32com.client as win32
 
-from weaver.weaver import _get_date, _load_template_paths, init_reports
+from weaver import _load_template_paths, init_reports
 from weaver.reports import ConfirmationTools, SimulationReport
-from weaver import TXT_PATH, COVER_SLIDE 
+from weaver import util 
 
 
 """ 

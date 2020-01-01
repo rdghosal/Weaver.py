@@ -1,5 +1,5 @@
 import os
-from .reports.meta import Interface, Signal
+# from .reports.meta import Interface, Signal
 from pywintypes import com_error
 
 # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -7,7 +7,7 @@ from pywintypes import com_error
 # //////////////////////////////
 
 # Path to textfile listing template paths
-TXT_PATH = "paths_to_templates.txt"
+TXT_PATH = r"E:\vs_code\takehome\Weaver\paths_to_templates.txt"
 
 # For cover slide
 COVER_SLIDE = 1 # Indexing starts at 1 for COM Objects
@@ -18,6 +18,7 @@ TABLE_COORDS = {
 }
 
 # Slide index of table of contents
+# and executive summary
 TOC = 3
 EXEC_SUMM = 4
 
@@ -154,20 +155,20 @@ def _set_signal(table):
             index = signal_group.find(":")
             signal.name = signal_group[index+1:] if index > -1 else signal_group
             if index > -1: 
-                signal.type = signal_group[:index]
+                signal.type = signal_group[:index].strip()
             # print(signal.name)
 
             # Set frequency
             freq_str = table.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
             try:
-                signal.frequency = freq_str.split()[0], freq_str.split()[1]
+                signal.frequency = freq_str.split()[0].strip(), freq_str.split()[1].strip()
             except IndexError:
                 signal.frequency = None
 
             # Set driver / receiver
             trans_line = table.Cell(row, 3).Shape.TextFrame.TextRange.Text[:]
-            signal.driver.ref_num = trans_line.split("~")[0]
-            signal.receiver.ref_num = trans_line.split("~")[1]
+            signal.driver.ref_num = trans_line.split("~")[0].strip()
+            signal.receiver.ref_num = trans_line.split("~")[1].strip()
 
             # Set PVT value
             signal.pvt = table.Cell(row, 5).Shape.TextFrame.TextRange.Text[:].split("/")
@@ -191,15 +192,22 @@ def _read_interface(slide, if_name, sim_dir):
     if tar_and_freq_table and ic_model_table:
         for signal in _set_signal(tar_and_freq_table): 
             interface.signals.append(signal)
+        print()
         for i, signal in enumerate(interface.signals):
             interface.signals[i] = _set_signal_devices(interface, signal, ic_model_table, sim_dir)
-
+            print(f"Loaded the following data for")
+            print(f"{signal.name}:")
+            print(f"DRIVER: {signal.driver.ref_num}")
+            print(f"RECEIVER: {signal.receiver.ref_num}\n")
+        print(f"TOTAL SIGNALS in")
+        print(f"{interface.name}: {len(interface.signals)}")
+        print()
         return interface
 
 
 def get_interfaces(conf_tools, sim_dir):
     toc = conf_tools.get_toc()
-    start, end = toc["sim_targets"][0], toc["sim_targets"][1]
+    start, end = toc["sim_target"][0], toc["sim_target"][1]
     for i in range(start, end + 1):
         # last_title = ""
         slide = conf_tools.pptx.Slides(i)
@@ -207,3 +215,59 @@ def get_interfaces(conf_tools, sim_dir):
         interface = _read_interface(slide, if_name, sim_dir)
         if interface:
             yield interface
+
+from abc import ABC
+class Interface():
+    def __init__(self, name):
+        self.__name = name.upper()
+        self.signals = list()
+
+    @property
+    def name(self):
+        return self.__name[:]
+
+
+class Device(ABC):
+    def __init__(self):
+        self.ref_num = str()
+        self.part_name = str()
+        self.ibis_model = str()
+        self.buffer_model = str()
+
+    # def ref_num(self):
+    #     return self.__ref_num[:]
+    
+    # def part_name(self):
+    #     return self.__part_name[:]
+    
+    # def ibis_model(self):
+    #     return self.__ibis_model[:]
+
+    # def buffer_model(self):
+    #     return self.__buffer_model[:]
+
+
+class Driver(Device):
+    def __init__(self):
+        super().__init__()
+
+class Receiver(Device):
+    def __init__(self):
+        super().__init__()
+
+class Signal():
+    def __init__(self):
+        self.type = str()
+        self.name = str()
+        self.__driver = Driver()
+        self.__receiver = Receiver()
+        self.pvt = str()
+        self.frequency = None
+
+    @property
+    def driver(self):
+        return self.__driver
+    
+    @property
+    def receiver(self):
+        return self.__receiver

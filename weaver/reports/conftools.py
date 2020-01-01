@@ -1,6 +1,6 @@
 import re
 from .report import Report
-from ..util import COVER_SLIDE, TITLE_NAME, TABLE_COORDS, TOC, com_error
+from util import COVER_SLIDE, TITLE_NAME, TABLE_COORDS, TOC, com_error
 
 
 # =======================
@@ -12,6 +12,7 @@ def _set_type(pptx):
     Parses path for report type 
     and verifies if report type is valid
     """
+    rep_type = ""
     # Get filename and search for report type
     match = re.search(r"^\w{2}\d{4}.*_(\w{2,3})_", pptx.Name)
     if match:
@@ -83,12 +84,12 @@ class ConfirmationTools(Report):
         if not self.__toc:
             toc = self._get_table(self.pptx.Slides(TOC).Shapes)
             # To be populated with slide nums
-            toc_dict = { "sim_targets": None }
+            toc_dict = { "sim_target": None }
 
             # Add depending on type
             if self.type == "si":
                 toc_dict["topology"] = None 
-                toc_dict["eye_mask"] = None
+                toc_dict["eye_mask_judgement"] = None
             elif self.type == "pi":
                 toc_dict["curr_consumption"] = None
                 toc_dict["voltage_margin"] = None
@@ -102,10 +103,12 @@ class ConfirmationTools(Report):
                 section_name = section_name.lower()
                 # Only contents in section 2 is of interest
                 try:
-                    if re.search(r"^\s*2\.", section_name):
+                    if re.search(r"^\s*\d\.", section_name):
                         for key in toc_dict.keys():
-                            target = key.split("_")[1] if key.find("_") > -1 else key
-                            if section_name.find(target) > -1:
+                            target = key.split("_")[-1] if key.find("_") > -1 else key
+                            if self.type == "si":
+                                section_name = section_name.split("&")[0].strip()
+                            if section_name.endswith(target):
                                 slide_num = toc.Cell(row, 2).Shape.TextFrame.TextRange.Text[:]
                                 toc_dict[key] = slide_num
                     # Check if end of TOC in order to end loop
@@ -130,12 +133,17 @@ class ConfirmationTools(Report):
                     toc_dict[section] = [ int(num) for num in slide_nums ]
                 # If single number
                 else:
-                    print(slide_nums)
                     # Keep returned data structures consistent by keeping values as list type
-                    toc_dict[section] = toc_dict.get(section, list(int(slide_nums)))
+                    num = [ int(slide_nums) ] * 2
+                    toc_dict[section] = num
 
+            print()
+            print("Loaded page numbers of the following sections:")
+            for k in toc_dict:
+                print(f"  {k.upper()}: {toc_dict[k][0]} - {toc_dict[k][1]}")
+            print()
             self.__toc = toc_dict
-        
+
         return self.__toc
 
 

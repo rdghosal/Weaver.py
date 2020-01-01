@@ -1,5 +1,6 @@
+from time import sleep
 from ..simreport import SimulationReport
-from ...util import TITLE_NAME, MSOTRUE, com_error
+from util import TITLE_NAME, MSOTRUE, com_error
 
 SIM_TARGETS = 6
 
@@ -35,48 +36,52 @@ class EMCReport(SimulationReport):
     def _get_power_nets(self, conf_tools):
         """Reads table of contents (TOC) for pages that need making"""
         toc = conf_tools.get_toc()
-        tar_pages = toc["sim_targets"]
+        tar_pages = toc["sim_target"]
         # Get page(s) and copy them into report
 
-        count = 0
-        for p in tar_pages:
-            curr_slide = SIM_TARGETS + count
-            conf_tools.pptx.Slides(p).Copy()
-            self.pptx.Slides.Paste(curr_slide)
-            slide_title = self.pptx.Slides(curr_slide).Shapes(TITLE_NAME).TextFrame.TextRange.Text[:]
-            slide_title = slide_title.replace("3.1", "")
-            self.pptx.Slides(curr_slide).Shapes(TITLE_NAME).TextFrame.TextRange.Text = slide_title[:]
-            count += 1
+        new_slides = tar_pages[1] - tar_pages[0]
+        self._curr_slide = 6
 
+        for slide in (self._curr_slide, self._curr_slide + new_slides):
+            for shape in self.pptx.Slides(slide).Shapes:
+                if shape.HasTextFrame == MSOTRUE:
+                    sec_num = "3.1"
+                    curr_text = shape.TextFrame.TextRange.Text[:]
+                    if curr_text.strip().startswith(sec_num):
+                        shape.TextFrame.TextRange.Text = curr_text.replace(sec_num, "")
+        
+        self._curr_slide += new_slides
+        
         sim_tar_table = self._get_table(self.pptx.Slides(SIM_TARGETS).Shapes)
         row = 2 # Initial row for scan
         while True:
             try:
                 net_col = 1 # For net names
+                voltage_col = 3
                 resonance_col = 4 # For y/n power resonance analysis
                 has_resonance = False 
                 net = sim_tar_table.Cell(row, net_col).Shape.TextFrame.TextRange.Text[:]
+                voltage = sim_tar_table.Cell(row, voltage_col).Shape.TextFrame.TextRange.Text[:]
                 if sim_tar_table.Cell(row, resonance_col).Shape.TextFrame.TextRange.Text[:] == u"〇":
                     has_resonance = True
-                self.__power_nets.append((net, has_resonance))
+                self.__power_nets.append((net, voltage, has_resonance))
                 row += 1 # Move down table
             # Found end of table
             except com_error:
                 break
 
-        self.__curr_slide += count # Move slide pointer
         return self.power_nets
 
     def _fill_analysis_table(self):
         """Populates resonance analysis table with power net names"""
-        self.__curr_slide += 2 # Move past divider (assumes execution after get_power_nets)
-        index = self.__curr_slide        
+        self._curr_slide += 2 # Move past divider (assumes execution after get_power_nets)
+        index = self._curr_slide        
 
         # Grab table from slide
-        slide = self.pptx.Slide(index)
+        slide = self.pptx.Slides(index)
         table = self._get_table(slide.Shapes)
 
-        row = 2 # init row
+        row = 3 # init row
         count = 0
         item_num = 1
 
@@ -87,55 +92,59 @@ class EMCReport(SimulationReport):
 
         while True:
             try:
-                if count % 2 != 0:
+                if row % 2 != 0:
+                    if row > 3: item_num += 1
                     table.Cell(row, 1).Shape.TextFrame.TextRange.Text = str(item_num)
-                    item_num += 1
-                new = table.Cell(row, 2).Shape.TextFrame.TextRange.Text.replace("<POWER_NET[i]>", self.power_nets[item_num - 1])
+                new = self.power_nets[item_num - 1][0]
                 table.Cell(row, 2).Shape.TextFrame.TextRange.Text = new
                 count += 1
-            except IndexError:
+                row += 1
+            except com_error:
                 break
 
     def _make_reson_analysis(self):
         """Copy template for resonance analysis and fill in table and title"""
-        self.__curr_slide += 3 # move to next (needs better error-proofing)
-        index = self.__curr_slide
-        shapes = self.pptx.Slide(index).Shapes
+        self._curr_slide += 3 # move to next (needs better error-proofing)
+        index = self._curr_slide
+        shapes = self.pptx.Slides(index).Shapes
 
         # Exclude init template slide and calc number of times to copy
         num_nets = len(self.power_nets) - 1
         count = 0
         self.pptx.Slides(index).Copy()
+        sleep(.25)
         # Use filter to only get those nets that need resonance analysis
         p_nets = self.power_nets
         while count < num_nets:
-            self.pptx.Slides.Paste(index + count) # Place right after current
-            shapes = self.pptx.Slides.Shapes
+            self.pptx.Slides.Paste(index + 1 + count) # Place right after current
+            shapes = self.pptx.Slides(index + 1 + count).Shapes
             for s in shapes:
                 if s.HasTextFrame == MSOTRUE:
-                    text = s.TextFrame.TextRange.Text[:].lower()
-                    if text.startswith("target"):
+                    text = s.TextFrame.TextRange.Text[:]
+                    if text.startswith("Target"):
                         # TODO: use boolean to make sure only nets needing resonance analysis are used
-                        new = text.replace("<V[i]>", p_nets[count][1][:] + "V")
+                        new = text.replace("<V[i]>", p_nets[count][1][:])
                         new = new.replace("<POWER_NET[i]>", p_nets[count][0][:])
                         s.TextFrame.TextRange.Text = new
                 elif s.HasTable == MSOTRUE:
-                    s.Table.Cells(2, 1).Shape.TextFrame.TextRange.Text = p_nets[count]
+                    s.Table.Cell(2, 1).Shape.TextFrame.TextRange.Text = p_nets[count][0]
 
             # Move to next power net        
             count += 1
 
+        self.pptx.Slides(index).Delete()
+
         # Move pointer to the last slide
-        self.__curr_slide += count
+        self._curr_slide += count
 
     def _add_appendix(self):
         """Adds appendix slides according to the power net list"""
         # Move to first slide of appendix
-        self.pptx.__curr_slide += 2
-        start = self.__curr_slide
+        start = self._curr_slide + 1
         p_nets = self.power_nets
 
         self.pptx.Slides(start).Copy()
+        sleep(.25)
 
         # start from 1 to account for init template slide
         for i in range(1, len(p_nets) - 1):
@@ -144,20 +153,21 @@ class EMCReport(SimulationReport):
         
         # Move pointer at start of section to end
         for j in range(0, len(p_nets) - 1):
-            start += j
-            shapes = self.pptx.Slides(start).Shapes
+            shapes = self.pptx.Slides(start + j).Shapes
             for s in shapes:
                 if s.HasTextFrame == MSOTRUE:
                     text = s.TextFrame.TextRange.Text[:]
                     if text.startswith("Appendix"):
                         new = text.replace("<i>", str(j + 1))
-                        new.replace("<POWER_NET[i]>", p_nets[j])
+                        new.replace("<POWER_NET[i]>", p_nets[j][0])
                         s.TextFrame.TextRange.Text = new
                 elif s.HasTable == MSOTRUE:
-                    text_range = s.Table.Cell(2,2).Shape.TextFrame
+                    text_range = s.Table.Cell(2,2).Shape.TextFrame.TextRange
                     text = text_range.Text[:]
-                    new = text.replace("<POWER_NET[i]>", p_nets[j])
+                    new = text.replace("<POWER_NET[i]>", p_nets[j][0])
                     text_range.Text = new
+
+        self.pptx.Slides(start).Delete()
     
     def _build_slides(self, conf_tools):
         self._get_power_nets(conf_tools)
