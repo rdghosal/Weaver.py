@@ -6,9 +6,6 @@ from pywintypes import com_error
 # *** GLOBAL CONSTANTS ****
 # //////////////////////////////
 
-# Path to textfile listing template paths
-TXT_PATH = r"E:\vs_code\takehome\Weaver\paths_to_templates.txt"
-
 # For cover slide
 COVER_SLIDE = 1 # Indexing starts at 1 for COM Objects
 TABLE_COORDS = {
@@ -25,7 +22,7 @@ EXEC_SUMM = 4
 # Values to verify shape identity
 MSOTRUE = -1
 TITLE_NAME = "Rectangle 26" 
-REP_SLIDE_TITLE = "Title 6" # TODO: make consistent between slides
+REP_SLIDE_TITLE = "Title 6" 
 DATE_NAME = u"テキスト プレースホルダー 10"
 
 

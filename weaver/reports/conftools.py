@@ -94,9 +94,6 @@ class ConfirmationTools(Report):
                 toc_dict["curr_consumption"] = None
                 toc_dict["voltage_margin"] = None
                 toc_dict["appendix"] = None
-            # TODO
-            # elif self.type == "emc":
-            #     toc_dict[""]
 
             row = 2 # Starting y coord of table traversal
             while True:

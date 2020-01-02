@@ -1,8 +1,9 @@
+import os
 import win32com.client as win32
 
 # from time import sleep
 # from abc import ABC, abstractmethod
-from util import TXT_PATH, get_interfaces
+from util import get_interfaces
 from reports import ConfirmationTools
 from reports.sim import SIReport, PIReport, EMCReport
 
@@ -47,7 +48,7 @@ def init_reports(PowerPoint, conf_tools, sim_dir=""):
     """
     Initializes and returns Report based on user input and template
     """
-    templates = _load_template_paths(TXT_PATH)
+    templates = _load_template_paths(os.getenv("TEMP_PATH"))
     reports = None
     proj_num = conf_tools.proj_num[:]
     rep_type = conf_tools.type

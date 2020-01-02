@@ -2,7 +2,7 @@
 import argparse, sys
 
 from time import sleep
-from weaver import weave_reports # TODO: Move _get_rep_type, fetch_interfaces
+from weaver import weave_reports
 
 
 def main():
@@ -14,7 +14,7 @@ def main():
     desc = """
             Weaver.py takes paths to: 
                 (1) a confirmation tools report,
-                (2) a Simulaton directory
+                (2) a Simulation directory
 
             For more information refer to the README.
            """
@@ -25,7 +25,7 @@ def main():
 
     # Optional args
     parser.add_argument("-s", "--simulation_dir", nargs=1, help="Path to simulation directory") 
-    # parser.add_argument("-i", "--image_dir", nargs=1, help="Path to directory of images to be included in the report(s)")
+    # TODO parser.add_argument("-i", "--image_dir", nargs=1, help="Path to directory of images to be included in the report(s)")
 
     # Retrieve args
     args = parser.parse_args()   
@@ -37,17 +37,12 @@ def main():
     # img_dir = args.image_dir 
     sim_dir = args.simulation_dir if args.simulation_dir else ""
 
-    # Get filename of confirmation report and grab report type 
-    # TODO: Keep the directory for navigating and fetching other files
-    # rep_type = _get_rep_type(conf_path)
-
     # Make reports based on inputs and print confirmation
     exit_code = 0
     try:
         weave_reports(conf_path, sim_dir)
     except:
         exit_code = 1
-   # print(f"Weaving of report(s) for simulation type {} complete.\n")
     
     # Close program
     print()
