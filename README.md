@@ -19,7 +19,7 @@ pip install -e weaver
 To use Weaver, a .txt textfile that lists paths to template PowerPoint files is necessary (refer to `paths_to_templates.txt`).
 Please set the path to this file as an environment variable `TEMP_PATH` prior to executing this program.
 
-### 3. 実行方法
+### 3. Execution
 ```bash
 # Help menu
 weaver -h
