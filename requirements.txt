@@ -17,7 +17,7 @@ pylint==2.4.4
 pyparsing==2.4.5
 pytest==5.3.1
 pytest-watch==4.2.0
-pywin32==227
+pywin32==301
 PyYAML==5.1.2
 six==1.13.0
 typed-ast==1.4.0
